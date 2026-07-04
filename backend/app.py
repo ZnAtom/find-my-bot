@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
+from datetime import datetime
 import psycopg2
 import psycopg2.extras
 import os
@@ -42,7 +43,7 @@ class UserResponse(BaseModel):
     qq: Optional[str] = None
     email: Optional[str] = None
     role: str
-    created_at: str
+    created_at: datetime
 
 class LostItemCreate(BaseModel):
     item_name: str
@@ -78,8 +79,8 @@ class LostItemResponse(BaseModel):
     contact_person: str
     contact_phone: Optional[str] = None
     contact_qq: Optional[str] = None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 @app.get("/api/users", response_model=List[UserResponse])
 def get_users():
