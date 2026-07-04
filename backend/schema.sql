@@ -24,7 +24,7 @@ CREATE TABLE lost_items (
     contact_person VARCHAR(100),
     contact_phone VARCHAR(20),
     contact_qq VARCHAR(20),
-    vector VECTOR(1536),
+    vector VECTOR(2048),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -38,6 +38,7 @@ CREATE TABLE match_records (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_lost_items_vector ON lost_items USING ivfflat (vector vector_cosine_ops) WITH (lists = 100);
+-- pgvector 0.8.x 索引维度上限 2000，Qwen 模型输出 2048，暂不建向量索引
+-- CREATE INDEX idx_lost_items_vector ON lost_items USING hnsw (vector vector_cosine_ops);
 CREATE INDEX idx_lost_items_status ON lost_items(status);
 CREATE INDEX idx_lost_items_type ON lost_items(item_type);

@@ -21,6 +21,10 @@
         <el-option label="丢失" value="lost" />
         <el-option label="已找回" value="found" />
       </el-select>
+      <el-radio-group v-model="searchMode" style="margin-left: 10px;">
+        <el-radio-button value="keyword">关键字</el-radio-button>
+        <el-radio-button value="semantic">语义搜索</el-radio-button>
+      </el-radio-group>
       <el-button type="primary" @click="handleSearch">搜索</el-button>
     </div>
 
@@ -28,6 +32,9 @@
       <el-row :gutter="20">
         <el-col :span="6" v-for="item in items" :key="item.id">
           <el-card class="item-card">
+            <div v-if="item.similarity !== undefined" class="similarity-badge" :style="{ background: simColor(item.similarity) }">
+              {{ (item.similarity * 100).toFixed(1) }}%
+            </div>
             <div class="item-image">
               <el-icon size="48" color="#909399"><Picture /></el-icon>
             </div>
@@ -72,6 +79,7 @@ import { lostItemsApi } from '../api'
 const searchQuery = ref('')
 const filterType = ref('')
 const filterStatus = ref('')
+const searchMode = ref('keyword')
 const items = ref([])
 const page = ref(1)
 const pageSize = ref(20)
@@ -89,7 +97,7 @@ const loadItems = async () => {
     }
     if (filterType.value) params.item_type = filterType.value
     if (filterStatus.value) params.status = filterStatus.value
-    
+
     const res = await lostItemsApi.getAll(params)
     items.value = res.data.items
     total.value = res.data.total
@@ -99,21 +107,37 @@ const loadItems = async () => {
 }
 
 const handleSearch = async () => {
-  if (searchQuery.value.trim()) {
-    try {
-      const res = await lostItemsApi.search({
+  if (!searchQuery.value.trim()) {
+    loadItems()
+    return
+  }
+  try {
+    if (searchMode.value === 'semantic') {
+      const res = await lostItemsApi.semanticSearch({
         query: searchQuery.value,
-        item_type: filterType.value,
-        status: filterStatus.value
+        limit: 50
       })
       items.value = res.data.results
       total.value = res.data.results.length
-    } catch (e) {
-      console.error('搜索失败', e)
+    } else {
+      const res = await lostItemsApi.search({
+        query: searchQuery.value,
+        item_type: filterType.value,
+        status: filterStatus.value,
+        limit: 50
+      })
+      items.value = res.data.results
+      total.value = res.data.results.length
     }
-  } else {
-    loadItems()
+  } catch (e) {
+    console.error('搜索失败', e)
   }
+}
+
+const simColor = (score) => {
+  if (score >= 0.8) return '#67C23A'
+  if (score >= 0.5) return '#E6A23C'
+  return '#909399'
 }
 
 const handlePageChange = (newPage) => {
@@ -144,6 +168,19 @@ const formatTime = (time) => {
 
 .item-card {
   height: 100%;
+  position: relative;
+}
+
+.similarity-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 10px;
+  z-index: 1;
 }
 
 .item-image {
