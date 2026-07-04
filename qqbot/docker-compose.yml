@@ -1,0 +1,35 @@
+services:
+  napcat:
+    image: napneko/napcatqq:latest
+    container_name: napcat
+    restart: unless-stopped
+    volumes:
+      - ./napcat/config:/app/config
+      - ./napcat/data:/app/data
+    ports:
+      - "3001:3001"
+      - "8080:8080"
+    environment:
+      - TZ=Asia/Shanghai
+    networks:
+      - qqbot-network
+
+  astrbot:
+    image: soulter/astrbot:latest
+    container_name: astrbot
+    restart: unless-stopped
+    volumes:
+      - ./astrbot/config:/AstrBot/data
+    ports:
+      - "6185:6185"
+      - "6199:6199"
+    environment:
+      - TZ=Asia/Shanghai
+    depends_on:
+      - napcat
+    networks:
+      - qqbot-network
+
+networks:
+  qqbot-network:
+    driver: bridge

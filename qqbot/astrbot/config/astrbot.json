@@ -1,0 +1,42 @@
+{
+  "bot": {
+    "platform": "qq",
+    "qq": "",
+    "nickname": "校园失物招领助手",
+    "command_prefix": "/",
+    "super_users": []
+  },
+  "connection": {
+    "type": "ws",
+    "host": "napcat",
+    "port": 8080,
+    "path": "/onebot/v11/ws",
+    "access_token": ""
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8765
+  },
+  "database": {
+    "type": "sqlite",
+    "path": "/app/data/astrbot.db"
+  },
+  "log": {
+    "level": "info",
+    "file": "/app/data/logs/astrbot.log"
+  },
+  "plugins": {
+    "enabled": [
+      "help",
+      "echo",
+      "weather"
+    ],
+    "disabled": []
+  },
+  "ai": {
+    "enabled": false,
+    "provider": "",
+    "api_key": "",
+    "model": ""
+  }
+}
