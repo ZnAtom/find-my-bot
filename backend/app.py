@@ -1,13 +1,16 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
 import psycopg2
 import psycopg2.extras
 import os
+import uuid
 
 app = FastAPI(title="校园失物招领 API", version="1.0.0")
 
+# CORS 跨域配置
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
@@ -15,6 +18,61 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 上传文件配置
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+
+# 挂载上传目录为静态文件服务
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+
+@app.post("/api/upload")
+async def upload_image(file: UploadFile = File(...), request: Request = None):
+    """上传图片，返回可访问的 URL"""
+    # 校验文件扩展名（统一小写）
+    original_name = file.filename or "unknown"
+    ext = os.path.splitext(original_name)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的文件类型: {ext}。允许的类型: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+
+    # 校验 MIME 类型
+    if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的文件格式: {file.content_type}"
+        )
+
+    # 生成唯一文件名
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, safe_name)
+
+    # 保存文件
+    try:
+        contents = await file.read()
+        if len(contents) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail=f"文件大小超过 {MAX_FILE_SIZE // 1024 // 1024}MB 限制")
+
+        with open(file_path, "wb") as f:
+            f.write(contents)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="文件保存失败")
+
+    # 动态构建访问 URL（不硬编码域名/端口）
+    base_url = str(request.base_url).rstrip("/")
+    file_url = f"{base_url}/uploads/{safe_name}"
+
+    return {"url": file_url, "filename": safe_name}
+
 
 DB_CONFIG = {
     "dbname": os.environ.get("DB_NAME", "lostfound"),
@@ -26,6 +84,17 @@ DB_CONFIG = {
 
 def get_db_connection():
     return psycopg2.connect(**DB_CONFIG)
+
+
+def serialize_row(row):
+    """将 DictCursor 行转为 JSON 兼容的 dict（datetime → str）"""
+    if row is None:
+        return None
+    result = dict(row)
+    for key, value in result.items():
+        if hasattr(value, 'isoformat'):
+            result[key] = value.isoformat()
+    return result
 
 class UserCreate(BaseModel):
     student_id: str
@@ -89,20 +158,24 @@ def get_users():
     users = cur.fetchall()
     cur.close()
     conn.close()
-    return [dict(u) for u in users]
+    return [serialize_row(u) for u in users]
 
 @app.post("/api/users", response_model=UserResponse)
 def create_user(user: UserCreate):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
+        # 显式获取下一个 ID（序列权限变通方案）
+        cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM users")
+        next_id = cur.fetchone()[0]
+
         cur.execute(
-            "INSERT INTO users (student_id, name, phone, qq, email) VALUES (%s, %s, %s, %s, %s) RETURNING *",
-            (user.student_id, user.name, user.phone, user.qq, user.email)
+            "INSERT INTO users (id, student_id, name, phone, qq, email) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
+            (next_id, user.student_id, user.name, user.phone, user.qq, user.email)
         )
         conn.commit()
         new_user = cur.fetchone()
-        return dict(new_user)
+        return serialize_row(new_user)
     except psycopg2.IntegrityError:
         conn.rollback()
         raise HTTPException(status_code=400, detail="学号已存在")
@@ -120,7 +193,7 @@ def get_user(user_id: int):
     conn.close()
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
-    return dict(user)
+    return serialize_row(user)
 
 @app.get("/api/lost-items")
 def get_lost_items(
@@ -158,7 +231,7 @@ def get_lost_items(
     conn.close()
     
     return {
-        "items": [dict(item) for item in items],
+        "items": [serialize_row(item) for item in items],
         "total": total,
         "page": page,
         "page_size": page_size
@@ -169,21 +242,33 @@ def create_lost_item(item: LostItemCreate):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
+        # 将空字符串转为 None，避免 PostgreSQL 解析错误
+        def none_if_empty(val):
+            return val if val not in (None, '') else None
+
+        # 显式获取下一个 ID（序列权限变通方案）
+        cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM lost_items")
+        next_id = cur.fetchone()[0]
+
         cur.execute(
-            """INSERT INTO lost_items 
-               (item_name, item_type, description, location, lost_time, status, 
-                image_url, contact_person, contact_phone, contact_qq) 
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
-            (item.item_name, item.item_type, item.description, item.location,
-             item.lost_time, item.status, item.image_url, item.contact_person,
-             item.contact_phone, item.contact_qq)
+            """INSERT INTO lost_items
+               (id, item_name, item_type, description, location, lost_time, status,
+                image_url, contact_person, contact_phone, contact_qq)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+            (next_id, item.item_name, none_if_empty(item.item_type),
+             none_if_empty(item.description), none_if_empty(item.location),
+             none_if_empty(item.lost_time), none_if_empty(item.status) or 'lost',
+             none_if_empty(item.image_url), item.contact_person,
+             none_if_empty(item.contact_phone), none_if_empty(item.contact_qq))
         )
         conn.commit()
         new_item = cur.fetchone()
-        return dict(new_item)
-    except Exception:
+        return serialize_row(new_item)
+    except Exception as e:
         conn.rollback()
-        raise HTTPException(status_code=400, detail="创建失物信息失败")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=f"创建失物信息失败: {e}")
     finally:
         cur.close()
         conn.close()
@@ -198,7 +283,7 @@ def get_lost_item(item_id: int):
     conn.close()
     if not item:
         raise HTTPException(status_code=404, detail="物品不存在")
-    return dict(item)
+    return serialize_row(item)
 
 @app.put("/api/lost-items/{item_id}", response_model=LostItemResponse)
 def update_lost_item(item_id: int, item: LostItemUpdate):
@@ -244,7 +329,7 @@ def update_lost_item(item_id: int, item: LostItemUpdate):
         if not updated_item:
             raise HTTPException(status_code=404, detail="物品不存在")
         
-        return dict(updated_item)
+        return serialize_row(updated_item)
     except HTTPException:
         raise
     except Exception:
@@ -304,7 +389,7 @@ def search_lost_items(
     cur.close()
     conn.close()
     
-    return {"results": [dict(item) for item in items]}
+    return {"results": [serialize_row(item) for item in items]}
 
 @app.get("/api/stats")
 def get_stats():
