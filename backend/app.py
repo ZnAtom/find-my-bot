@@ -6,11 +6,23 @@ from typing import Optional, List
 import psycopg2
 import psycopg2.extras
 import os
+<<<<<<< HEAD
 import uuid
 
 app = FastAPI(title="校园失物招领 API", version="1.0.0")
 
 # CORS 跨域配置
+=======
+from embedding import encode_text, encode_image, init_model
+
+app = FastAPI(title="校园失物招领 API", version="1.0.0")
+
+
+@app.on_event("startup")
+def startup():
+    init_model()
+
+>>>>>>> origin/draft/czh-LLM_embedding
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
@@ -81,6 +93,25 @@ DB_CONFIG = {
     "host": os.environ.get("DB_HOST", "localhost"),
     "port": os.environ.get("DB_PORT", "5432")
 }
+
+def _vector_str(values: list[float]) -> str:
+    return "[" + ",".join(str(v) for v in values) + "]"
+
+
+def _build_vector(item_name: str, description: Optional[str] = None, image_url: Optional[str] = None) -> Optional[str]:
+    text_parts = [item_name]
+    if description:
+        text_parts.append(description)
+    text = " ".join(text_parts)
+    try:
+        if image_url and os.path.isfile(image_url):
+            vec = encode_image(image_url)
+        else:
+            vec = encode_text(text)
+        return _vector_str(vec)
+    except Exception:
+        return None
+
 
 def get_db_connection():
     return psycopg2.connect(**DB_CONFIG)
@@ -241,6 +272,7 @@ def get_lost_items(
 def create_lost_item(item: LostItemCreate):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    vector = _build_vector(item.item_name, item.description, item.image_url)
     try:
         # 将空字符串转为 None，避免 PostgreSQL 解析错误
         def none_if_empty(val):
@@ -252,6 +284,7 @@ def create_lost_item(item: LostItemCreate):
 
         cur.execute(
             """INSERT INTO lost_items
+<<<<<<< HEAD
                (id, item_name, item_type, description, location, lost_time, status,
                 image_url, contact_person, contact_phone, contact_qq)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
@@ -260,6 +293,14 @@ def create_lost_item(item: LostItemCreate):
              none_if_empty(item.lost_time), none_if_empty(item.status) or 'lost',
              none_if_empty(item.image_url), item.contact_person,
              none_if_empty(item.contact_phone), none_if_empty(item.contact_qq))
+=======
+               (item_name, item_type, description, location, lost_time, status,
+                image_url, contact_person, contact_phone, contact_qq, vector)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
+            (item.item_name, item.item_type, item.description, item.location,
+             item.lost_time, item.status, item.image_url, item.contact_person,
+             item.contact_phone, item.contact_qq, vector)
+>>>>>>> origin/draft/czh-LLM_embedding
         )
         conn.commit()
         new_item = cur.fetchone()
@@ -317,7 +358,18 @@ def update_lost_item(item_id: int, item: LostItemUpdate):
         
         if not update_fields:
             raise HTTPException(status_code=400, detail="没有要更新的字段")
-        
+
+        if item.item_name or item.description or item.image_url:
+            cur.execute("SELECT item_name, description, image_url FROM lost_items WHERE id = %s", (item_id,))
+            row = cur.fetchone()
+            if row:
+                new_name = item.item_name or row["item_name"]
+                new_desc = item.description or row["description"]
+                new_img = item.image_url or row["image_url"]
+                vector = _build_vector(new_name, new_desc, new_img)
+                update_fields.append("vector = %s::vector")
+                params.append(vector)
+
         update_fields.append("updated_at = CURRENT_TIMESTAMP")
         params.append(item_id)
         
@@ -390,6 +442,36 @@ def search_lost_items(
     conn.close()
     
     return {"results": [serialize_row(item) for item in items]}
+
+
+@app.get("/api/semantic-search")
+def semantic_search(
+    query: str = Query(..., min_length=1),
+    limit: int = 10
+):
+    try:
+        vec = encode_text(query)
+    except Exception:
+        raise HTTPException(status_code=500, detail="向量模型未就绪")
+
+    vector_str = _vector_str(vec)
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    try:
+        cur.execute(
+            """SELECT *, 1 - (vector <=> %s::vector) AS similarity
+               FROM lost_items
+               WHERE vector IS NOT NULL
+               ORDER BY vector <=> %s::vector
+               LIMIT %s""",
+            (vector_str, vector_str, limit)
+        )
+        items = cur.fetchall()
+        return {"results": [dict(item) for item in items]}
+    finally:
+        cur.close()
+        conn.close()
+
 
 @app.get("/api/stats")
 def get_stats():

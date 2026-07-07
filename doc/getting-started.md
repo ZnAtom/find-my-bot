@@ -107,6 +107,8 @@ docker compose up -d --build backend
 
 初始化 SQL 脚本：`backend/schema.sql`，容器首次启动时自动执行。
 
+**首次启动说明**：后端首次启动时会自动从 HuggingFace 下载 Qwen 嵌入模型（约 4GB），需等待几分钟。国内网络可在 `docker-compose.yml` 中取消注释 `HF_ENDPOINT: https://hf-mirror.com` 使用镜像加速。如果模型已缓存在本地，设置 `HF_LOCAL_ONLY: "1"` 跳过下载。
+
 ## 8. QQ 机器人（可选）
 
 根 `docker-compose.yml` 中已预留 napcat + astrbot 服务的配置（默认注释）。需要时取消注释并确保对应的配置文件已放置在 `qqbot/` 目录下。

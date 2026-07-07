@@ -17,7 +17,8 @@ export const lostItemsApi = {
   create: (data) => api.post('/lost-items', data),
   update: (id, data) => api.put(`/lost-items/${id}`, data),
   delete: (id) => api.delete(`/lost-items/${id}`),
-  search: (params) => api.get('/search', { params })
+  search: (params) => api.get('/search', { params }),
+  semanticSearch: (params) => api.get('/semantic-search', { params })
 }
 
 export const usersApi = {

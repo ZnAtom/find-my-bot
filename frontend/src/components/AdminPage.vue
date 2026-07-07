@@ -48,6 +48,15 @@
           </template>
         </el-table-column>
         <el-table-column prop="contact_person" label="联系人" width="100" />
+        <el-table-column label="向量" width="180">
+          <template #default="scope">
+            <template v-if="scope.row.vector">
+              <span class="vector-summary">{{ vectorSummary(scope.row.vector) }}</span>
+              <el-button type="primary" link size="small" @click="showVector(scope.row)">详情</el-button>
+            </template>
+            <span v-else class="no-vector">未向量化</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="created_at" label="发布时间" width="180">
           <template #default="scope">
             {{ formatTime(scope.row.created_at) }}
@@ -70,6 +79,14 @@
         </el-table-column>
       </el-table>
     </div>
+
+    <el-dialog v-model="vectorDialogVisible" title="向量详情" width="700px">
+      <template v-if="selectedItem">
+        <p><strong>物品：</strong>{{ selectedItem.item_name }}</p>
+        <p><strong>向量维度：</strong>{{ vectorParsed(selectedItem.vector).length }}</p>
+        <div class="vector-full">{{ vectorParsed(selectedItem.vector).join(', ') }}</div>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="dialogVisible" title="编辑失物信息">
       <el-form :model="editForm" label-width="100px">
@@ -112,6 +129,8 @@ import { lostItemsApi, statsApi } from '../api'
 const stats = ref({})
 const items = ref([])
 const dialogVisible = ref(false)
+const vectorDialogVisible = ref(false)
+const selectedItem = ref(null)
 const editForm = reactive({
   id: null,
   item_name: '',
@@ -211,6 +230,23 @@ const formatTime = (time) => {
   if (!time) return ''
   return new Date(time).toLocaleString('zh-CN')
 }
+
+const vectorSummary = (vec) => {
+  const arr = Array.isArray(vec) ? vec : JSON.parse(vec.replace(/\(/g, '[').replace(/\)/g, ']'))
+  if (arr.length === 0) return '无'
+  return `[${arr.slice(0, 5).map(v => Number(v).toFixed(4)).join(', ')}, ...] ${arr.length}维`
+}
+
+const vectorParsed = (vec) => {
+  if (!vec) return []
+  const arr = Array.isArray(vec) ? vec : JSON.parse(vec.replace(/\(/g, '[').replace(/\)/g, ']'))
+  return arr.map(v => Number(v))
+}
+
+const showVector = (row) => {
+  selectedItem.value = row
+  vectorDialogVisible.value = true
+}
 </script>
 
 <style scoped>
@@ -280,5 +316,29 @@ const formatTime = (time) => {
 .table-section h3 {
   margin-bottom: 15px;
   font-size: 18px;
+}
+
+.vector-summary {
+  font-family: monospace;
+  font-size: 11px;
+  color: #606266;
+  margin-right: 8px;
+}
+
+.no-vector {
+  color: #F56C6C;
+  font-size: 12px;
+}
+
+.vector-full {
+  font-family: monospace;
+  font-size: 11px;
+  max-height: 400px;
+  overflow-y: auto;
+  word-break: break-all;
+  background: #f5f7fa;
+  padding: 12px;
+  border-radius: 4px;
+  line-height: 1.8;
 }
 </style>
