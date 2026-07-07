@@ -36,7 +36,8 @@
               {{ (item.similarity * 100).toFixed(1) }}%
             </div>
             <div class="item-image">
-              <el-icon size="48" color="#909399"><Picture /></el-icon>
+              <img v-if="item.image_url" :src="item.image_url.split(',')[0]" alt="物品图片" />
+              <el-icon v-else size="48" color="#909399"><Picture /></el-icon>
             </div>
             <div class="item-info">
               <div class="item-header">
@@ -199,6 +200,13 @@ const formatTime = (time) => {
   align-items: center;
   justify-content: center;
   margin-bottom: 15px;
+  overflow: hidden;
+}
+
+.item-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .item-header {

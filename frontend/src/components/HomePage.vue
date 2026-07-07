@@ -48,7 +48,8 @@
         <el-col :span="6" v-for="item in latestItems" :key="item.id">
           <el-card class="item-card">
             <div class="item-image">
-              <el-icon size="48" color="#909399"><Picture /></el-icon>
+              <img v-if="item.image_url" :src="item.image_url.split(',')[0]" alt="物品图片" />
+              <el-icon v-else size="48" color="#909399"><Picture /></el-icon>
             </div>
             <div class="item-info">
               <h3>{{ item.item_name }}</h3>
@@ -199,6 +200,13 @@ const handleSearch = () => {
   align-items: center;
   justify-content: center;
   margin-bottom: 15px;
+  overflow: hidden;
+}
+
+.item-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .item-info h3 {
