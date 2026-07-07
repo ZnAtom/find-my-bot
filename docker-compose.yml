@@ -19,30 +19,6 @@ services:
     networks:
       - app-network
 
-  backend:
-    build: ./backend
-    container_name: findmybot-backend
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./backend:/app
-    environment:
-      DB_HOST: db
-      DB_PORT: "5432"
-      DB_USER: appuser
-      DB_PASSWORD: password
-      DB_NAME: lostfound
-      # 国内用户改为 https://hf-mirror.com
-      # HF_ENDPOINT: https://hf-mirror.com
-      # 已有模型缓存时设为 1 跳过下载
-      # HF_LOCAL_ONLY: "1"
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - app-network
-
   frontend:
     build: ./frontend
     container_name: findmybot-frontend
@@ -51,8 +27,6 @@ services:
       - "5173:5173"
     volumes:
       - ./frontend/src:/app/src
-    depends_on:
-      - backend
     networks:
       - app-network
 

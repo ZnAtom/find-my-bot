@@ -6,13 +6,6 @@ from typing import Optional, List
 import psycopg2
 import psycopg2.extras
 import os
-<<<<<<< HEAD
-import uuid
-
-app = FastAPI(title="校园失物招领 API", version="1.0.0")
-
-# CORS 跨域配置
-=======
 from embedding import encode_text, encode_image, init_model
 
 app = FastAPI(title="校园失物招领 API", version="1.0.0")
@@ -22,7 +15,6 @@ app = FastAPI(title="校园失物招领 API", version="1.0.0")
 def startup():
     init_model()
 
->>>>>>> origin/draft/czh-LLM_embedding
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
@@ -127,6 +119,11 @@ def serialize_row(row):
             result[key] = value.isoformat()
     return result
 
+
+def none_if_empty(val):
+    """将空字符串转为 None，避免 PostgreSQL 解析空字符串报错"""
+    return val if val not in (None, '') else None
+
 class UserCreate(BaseModel):
     student_id: str
     name: str
@@ -202,7 +199,8 @@ def create_user(user: UserCreate):
 
         cur.execute(
             "INSERT INTO users (id, student_id, name, phone, qq, email) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
-            (next_id, user.student_id, user.name, user.phone, user.qq, user.email)
+            (next_id, user.student_id, user.name,
+             none_if_empty(user.phone), none_if_empty(user.qq), none_if_empty(user.email))
         )
         conn.commit()
         new_user = cur.fetchone()
@@ -274,17 +272,12 @@ def create_lost_item(item: LostItemCreate):
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     vector = _build_vector(item.item_name, item.description, item.image_url)
     try:
-        # 将空字符串转为 None，避免 PostgreSQL 解析错误
-        def none_if_empty(val):
-            return val if val not in (None, '') else None
-
         # 显式获取下一个 ID（序列权限变通方案）
         cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM lost_items")
         next_id = cur.fetchone()[0]
 
         cur.execute(
             """INSERT INTO lost_items
-<<<<<<< HEAD
                (id, item_name, item_type, description, location, lost_time, status,
                 image_url, contact_person, contact_phone, contact_qq)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
@@ -293,14 +286,6 @@ def create_lost_item(item: LostItemCreate):
              none_if_empty(item.lost_time), none_if_empty(item.status) or 'lost',
              none_if_empty(item.image_url), item.contact_person,
              none_if_empty(item.contact_phone), none_if_empty(item.contact_qq))
-=======
-               (item_name, item_type, description, location, lost_time, status,
-                image_url, contact_person, contact_phone, contact_qq, vector)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
-            (item.item_name, item.item_type, item.description, item.location,
-             item.lost_time, item.status, item.image_url, item.contact_person,
-             item.contact_phone, item.contact_qq, vector)
->>>>>>> origin/draft/czh-LLM_embedding
         )
         conn.commit()
         new_item = cur.fetchone()
@@ -467,7 +452,7 @@ def semantic_search(
             (vector_str, vector_str, limit)
         )
         items = cur.fetchall()
-        return {"results": [dict(item) for item in items]}
+        return {"results": [serialize_row(item) for item in items]}
     finally:
         cur.close()
         conn.close()
