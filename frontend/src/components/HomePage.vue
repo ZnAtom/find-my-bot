@@ -5,11 +5,12 @@
         <h1>校园失物招领平台</h1>
         <p>智能匹配 · 快速找回 · 服务师生</p>
         <div class="search-box">
-          <el-input 
-            v-model="searchQuery" 
-            placeholder="搜索失物信息，如：手机、钱包、校园卡..." 
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索失物信息，如：手机、钱包、校园卡..."
             prefix-icon="Search"
             size="large"
+            @keyup.enter="handleSearch"
           />
           <el-button type="primary" size="large" @click="handleSearch">搜索</el-button>
         </div>
@@ -41,7 +42,7 @@
     <div class="content-section">
       <div class="section-header">
         <h2>最新失物信息</h2>
-        <el-button type="text" @click="$emit('navigate', 'lost')">查看全部</el-button>
+        <el-button type="text" @click="router.push({ name: 'lost' })">查看全部</el-button>
       </div>
       <el-row :gutter="20">
         <el-col :span="6" v-for="item in latestItems" :key="item.id">
@@ -67,6 +68,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Box, HelpFilled, CircleCheck, User, Picture, MapLocation } from '@element-plus/icons-vue'
 import { lostItemsApi, statsApi } from '../api'
 
@@ -91,20 +93,19 @@ const loadStats = async () => {
 const loadLatestItems = async () => {
   try {
     const res = await lostItemsApi.getAll({ page: 1, page_size: 4 })
-    latestItems.value = res.data
+    latestItems.value = res.data.items || []
   } catch (e) {
     console.error('加载最新失物失败', e)
   }
 }
 
+const router = useRouter()
+
 const handleSearch = () => {
   if (searchQuery.value.trim()) {
-    // 跳转到失物列表页并传递搜索关键词
-    window.location.hash = '#/lost?query=' + encodeURIComponent(searchQuery.value)
+    router.push({ name: 'lost', query: { q: searchQuery.value.trim() } })
   }
 }
-
-defineEmits(['navigate'])
 </script>
 
 <style scoped>

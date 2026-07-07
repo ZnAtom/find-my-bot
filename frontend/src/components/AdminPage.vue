@@ -105,6 +105,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { HelpFilled, CircleCheck, Box, User } from '@element-plus/icons-vue'
 import { lostItemsApi, statsApi } from '../api'
 
@@ -163,26 +164,32 @@ const saveEdit = async () => {
       dialogVisible.value = false
       loadItems()
       loadStats()
-      alert('保存成功')
+      ElMessage.success('保存成功')
     }
   } catch (e) {
     console.error('保存失败', e)
-    alert('保存失败')
+    ElMessage.error('保存失败')
   }
 }
 
 const deleteItem = async (id) => {
-  if (!confirm('确定要删除这条记录吗？')) return
   try {
+    await ElMessageBox.confirm('确定要删除这条记录吗？', '警告', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
+    })
     const res = await lostItemsApi.delete(id)
     if (res.status === 200) {
       loadItems()
       loadStats()
-      alert('删除成功')
+      ElMessage.success('删除成功')
     }
   } catch (e) {
-    console.error('删除失败', e)
-    alert('删除失败')
+    if (e !== 'cancel' && e !== 'close') {
+      console.error('删除失败', e)
+      ElMessage.error('删除失败')
+    }
   }
 }
 
@@ -192,11 +199,11 @@ const markFound = async (id) => {
     if (res.status === 200) {
       loadItems()
       loadStats()
-      alert('标记成功')
+      ElMessage.success('标记成功')
     }
   } catch (e) {
     console.error('标记失败', e)
-    alert('标记失败')
+    ElMessage.error('标记失败')
   }
 }
 

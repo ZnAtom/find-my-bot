@@ -5,6 +5,12 @@ const api = axios.create({
   timeout: 10000
 })
 
+// 上传文件用单独的 axios 实例（上传可能耗时更长）
+const uploadClient = axios.create({
+  baseURL: 'http://localhost:8000',
+  timeout: 30000
+})
+
 export const lostItemsApi = {
   getAll: (params) => api.get('/lost-items', { params }),
   getById: (id) => api.get(`/lost-items/${id}`),
@@ -22,6 +28,15 @@ export const usersApi = {
 
 export const statsApi = {
   get: () => api.get('/stats')
+}
+
+export const uploadApi = {
+  uploadImage: (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    // 不手动设置 Content-Type，让 axios 自动添加正确的 boundary 参数
+    return uploadClient.post('/api/upload', formData)
+  }
 }
 
 export default api

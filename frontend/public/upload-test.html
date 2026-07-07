@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Upload Test</title></head>
+<body>
+<h1>最简上传测试</h1>
+
+<!-- 测试1: 纯 HTML input，无任何 JS 过滤 -->
+<h3>Test 1: 纯文件选择（选完文件下面会变）</h3>
+<input type="file" id="rawInput"><br>
+<span>已选文件: <b id="rawName">(无)</b></span>
+
+<hr>
+
+<!-- 测试2: 限制 image/* 的文件选择 -->
+<h3>Test 2: 限制图片类型（accept=image/*）</h3>
+<input type="file" id="imageInput" accept="image/*"><br>
+<span>已选文件: <b id="imageName">(无)</b></span>
+
+<hr>
+
+<!-- 测试3: 选文件 + 直接 fetch 上传 -->
+<h3>Test 3: 选图上传</h3>
+<input type="file" id="uploadInput" accept="image/*">
+<button onclick="doUpload()">上传到后端</button>
+<pre id="result"></pre>
+
+<script>
+// 测试1: 纯选择
+document.getElementById('rawInput').addEventListener('change', function() {
+  const f = this.files[0]
+  document.getElementById('rawName').textContent = f ? `${f.name} (${f.size} bytes, type="${f.type}")` : '(无)'
+})
+
+// 测试2: 限制图片
+document.getElementById('imageInput').addEventListener('change', function() {
+  const f = this.files[0]
+  document.getElementById('imageName').textContent = f ? `${f.name} (${f.size} bytes, type="${f.type}")` : '(无)'
+})
+
+// 测试3: 上传
+async function doUpload() {
+  const input = document.getElementById('uploadInput')
+  const file = input.files[0]
+  const pre = document.getElementById('result')
+  if (!file) { pre.textContent = '请先选择文件'; return }
+
+  pre.textContent = `选中: ${file.name}, type="${file.type}", size=${file.size}\n正在上传...`
+
+  const fd = new FormData()
+  fd.append('file', file)
+
+  try {
+    const res = await fetch('http://localhost:8000/api/upload', { method: 'POST', body: fd })
+    const data = await res.json()
+    pre.textContent += `\n✅ 上传成功: ${JSON.stringify(data, null, 2)}`
+  } catch (e) {
+    pre.textContent += `\n❌ 上传失败: ${e.message}`
+  }
+}
+</script>
+</body>
+</html>

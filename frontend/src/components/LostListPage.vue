@@ -66,6 +66,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { Picture, MapLocation, Clock, User, Phone } from '@element-plus/icons-vue'
 import { lostItemsApi } from '../api'
 
@@ -77,8 +78,16 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 
+const route = useRoute()
+
 onMounted(() => {
-  loadItems()
+  const q = route.query.q
+  if (q) {
+    searchQuery.value = q
+    handleSearch()
+  } else {
+    loadItems()
+  }
 })
 
 const loadItems = async () => {

@@ -1,24 +1,24 @@
 <template>
   <el-header class="header">
     <div class="header-content">
-      <div class="logo" @click="$emit('navigate', 'home')">
+      <div class="logo" @click="navigate('home')">
         <el-icon size="32" color="#409EFF"><Search /></el-icon>
         <span class="logo-text">校园失物招领</span>
       </div>
       <el-menu :default-active="activeMenu" mode="horizontal" class="nav-menu">
-        <el-menu-item index="home" @click="$emit('navigate', 'home')">
+        <el-menu-item index="home" @click="navigate('home')">
           <el-icon><HomeFilled /></el-icon>
           <span>首页</span>
         </el-menu-item>
-        <el-menu-item index="lost" @click="$emit('navigate', 'lost')">
+        <el-menu-item index="lost" @click="navigate('lost')">
           <el-icon><Document /></el-icon>
           <span>失物列表</span>
         </el-menu-item>
-        <el-menu-item index="create" @click="$emit('navigate', 'create')">
+        <el-menu-item index="create" @click="navigate('create')">
           <el-icon><Plus /></el-icon>
           <span>发布信息</span>
         </el-menu-item>
-        <el-menu-item index="admin" @click="$emit('navigate', 'admin')">
+        <el-menu-item index="admin" @click="navigate('admin')">
           <el-icon><Setting /></el-icon>
           <span>管理后台</span>
         </el-menu-item>
@@ -28,16 +28,18 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { Search, HomeFilled, Document, Plus, Setting } from '@element-plus/icons-vue'
 
-defineProps({
-  activeMenu: {
-    type: String,
-    default: 'home'
-  }
-})
+const router = useRouter()
+const route = useRoute()
 
-defineEmits(['navigate'])
+const activeMenu = computed(() => route.name || 'home')
+
+const navigate = (name) => {
+  router.push({ name })
+}
 </script>
 
 <style scoped>
