@@ -39,5 +39,5 @@ def encode_text(text: str) -> list[float]:
 def encode_image(image_path: str) -> list[float]:
     img = Image.open(image_path)
     img.thumbnail((448, 448))
-    embedding = model.encode(img, normalize_embeddings=True)
+    embedding = _model.encode(img, normalize_embeddings=True)
     return embedding.tolist()
