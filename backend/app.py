@@ -6,6 +6,7 @@ from typing import Optional, List
 import psycopg2
 import psycopg2.extras
 import os
+import uuid
 from embedding import encode_text, encode_image, init_model
 
 app = FastAPI(title="校园失物招领 API", version="1.0.0")

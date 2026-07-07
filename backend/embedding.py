@@ -21,11 +21,11 @@ def init_model():
         device = "cpu"
         dtype = torch.float32
 
-    local_only = os.environ.get("HF_LOCAL_ONLY", "0") == "1"
+    local_only = True
     _model = SentenceTransformer(
-        "Qwen/Qwen3-Embedding-0.6B",
-        # device=device,
-        # model_kwargs={"torch_dtype": dtype},
+        "Qwen/Qwen3-VL-Embedding-2B",
+        device=device,
+        model_kwargs={"torch_dtype": dtype},
         local_files_only=local_only,
     )
     # model = SentenceTransformer("Qwen/Qwen3-Embedding-0.6B")
