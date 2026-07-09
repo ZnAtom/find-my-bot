@@ -88,8 +88,13 @@ DB_CONFIG = {
     "port": os.environ.get("DB_PORT", "5432")
 }
 
+# 数据库向量列维度（需与 pgvector column 定义一致）
+VECTOR_DIM = int(os.environ.get("VECTOR_DIM", "1536"))
+
+
 def _vector_str(values: list[float]) -> str:
-    return "[" + ",".join(str(v) for v in values) + "]"
+    trimmed = values[:VECTOR_DIM]
+    return "[" + ",".join(str(v) for v in trimmed) + "]"
 
 
 def _build_vector(item_name: str, description: Optional[str] = None, image_url: Optional[str] = None) -> Optional[str]:
@@ -281,13 +286,14 @@ def create_lost_item(item: LostItemCreate):
         cur.execute(
             """INSERT INTO lost_items
                (id, item_name, item_type, description, location, lost_time, status,
-                image_url, contact_person, contact_phone, contact_qq)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+                image_url, contact_person, contact_phone, contact_qq, vector)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
             (next_id, item.item_name, none_if_empty(item.item_type),
              none_if_empty(item.description), none_if_empty(item.location),
              none_if_empty(item.lost_time), none_if_empty(item.status) or 'lost',
              none_if_empty(item.image_url), item.contact_person,
-             none_if_empty(item.contact_phone), none_if_empty(item.contact_qq))
+             none_if_empty(item.contact_phone), none_if_empty(item.contact_qq),
+             none_if_empty(vector))
         )
         conn.commit()
         new_item = cur.fetchone()

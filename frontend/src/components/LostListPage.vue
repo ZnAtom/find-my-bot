@@ -1,14 +1,14 @@
 <template>
   <div class="lost-list-page">
     <div class="search-bar">
-      <el-input 
-        v-model="searchQuery" 
-        placeholder="搜索失物名称、描述、地点..." 
+      <el-input
+        v-model="searchQuery"
+        placeholder="搜索失物名称、描述、地点..."
         prefix-icon="Search"
-        style="width: 300px;"
+        style="width: 300px"
         @keyup.enter="handleSearch"
       />
-      <el-select v-model="filterType" placeholder="物品类型" style="width: 150px; margin-left: 10px;">
+      <el-select v-model="filterType" placeholder="物品类型" style="width: 150px; margin-left: 10px">
         <el-option label="全部" value="" />
         <el-option label="电子产品" value="电子产品" />
         <el-option label="证件卡片" value="证件卡片" />
@@ -16,38 +16,47 @@
         <el-option label="学习用品" value="学习用品" />
         <el-option label="其他" value="其他" />
       </el-select>
-      <el-select v-model="filterStatus" placeholder="状态" style="width: 120px; margin-left: 10px;">
+      <el-select v-model="filterStatus" placeholder="状态" style="width: 120px; margin-left: 10px">
         <el-option label="全部" value="" />
         <el-option label="丢失" value="lost" />
         <el-option label="已找回" value="found" />
       </el-select>
-      <el-radio-group v-model="searchMode" style="margin-left: 10px;">
+      <el-radio-group v-model="searchMode" style="margin-left: 10px">
         <el-radio-button value="keyword">关键字</el-radio-button>
         <el-radio-button value="semantic">语义搜索</el-radio-button>
       </el-radio-group>
-      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button type="primary" @click="handleSearch" :loading="loading">
+        <template v-if="!loading">搜索</template>
+      </el-button>
     </div>
 
-    <div class="items-grid">
+    <!-- 加载动画 -->
+    <div class="items-grid" v-loading="loading" element-loading-text="搜索中...">
+      <!-- 结果数量提示 -->
+      <div v-if="!loading && searchQuery && total > 0" class="result-hint">
+        搜索 "<em>{{ searchQuery }}</em>"，找到 <strong>{{ total }}</strong> 条结果
+        <span v-if="searchMode === 'semantic'" class="semantic-badge">语义匹配</span>
+      </div>
+
       <el-row :gutter="20">
         <el-col :span="6" v-for="item in items" :key="item.id">
-          <el-card class="item-card">
+          <el-card class="item-card" shadow="hover" @click="goDetail(item.id)">
             <div v-if="item.similarity !== undefined" class="similarity-badge" :style="{ background: simColor(item.similarity) }">
               {{ (item.similarity * 100).toFixed(1) }}%
             </div>
             <div class="item-image">
-              <img v-if="item.image_url" :src="item.image_url.split(',')[0]" alt="物品图片" />
+              <img v-if="item.image_url" :src="resolveImageUrl(item.image_url.split(',')[0])" alt="物品图片" />
               <el-icon v-else size="48" color="#909399"><Picture /></el-icon>
             </div>
             <div class="item-info">
               <div class="item-header">
-                <h3>{{ item.item_name }}</h3>
+                <h3 v-html="highlight(item.item_name)"></h3>
                 <span :class="['status-tag', item.status]">{{ item.status === 'lost' ? '丢失' : '已找回' }}</span>
               </div>
               <p class="item-type">{{ item.item_type }}</p>
-              <p class="item-desc">{{ item.description }}</p>
+              <p class="item-desc" v-html="highlight(item.description || '')"></p>
               <div class="item-details">
-                <div><el-icon><MapLocation /></el-icon> {{ item.location }}</div>
+                <div><el-icon><MapLocation /></el-icon> <span v-html="highlight(item.location || '')"></span></div>
                 <div><el-icon><Clock /></el-icon> {{ formatTime(item.lost_time) }}</div>
               </div>
               <div class="contact-info">
@@ -60,7 +69,11 @@
       </el-row>
     </div>
 
-    <div v-if="total > 0" class="pagination">
+    <!-- 空状态 -->
+    <el-empty v-if="!loading && total === 0 && searched" description="未找到匹配的失物信息" />
+
+    <!-- 分页 -->
+    <div v-if="!loading && total > 0" class="pagination">
       <el-pagination
         :current-page="page"
         :page-size="pageSize"
@@ -74,9 +87,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Picture, MapLocation, Clock, User, Phone } from '@element-plus/icons-vue'
-import { lostItemsApi } from '../api'
+import { lostItemsApi, resolveImageUrl } from '../api'
 
 const searchQuery = ref('')
 const filterType = ref('')
@@ -86,8 +99,11 @@ const items = ref([])
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+const loading = ref(false)
+const searched = ref(false)
 
 const route = useRoute()
+const router = useRouter()
 
 onMounted(() => {
   const q = route.query.q
@@ -100,19 +116,20 @@ onMounted(() => {
 })
 
 const loadItems = async () => {
+  loading.value = true
   try {
-    const params = {
-      page: page.value,
-      page_size: pageSize.value
-    }
+    const params = { page: page.value, page_size: pageSize.value }
     if (filterType.value) params.item_type = filterType.value
     if (filterStatus.value) params.status = filterStatus.value
 
     const res = await lostItemsApi.getAll(params)
     items.value = res.data.items
     total.value = res.data.total
+    searched.value = false
   } catch (e) {
     console.error('加载失物列表失败', e)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -121,27 +138,54 @@ const handleSearch = async () => {
     loadItems()
     return
   }
+  loading.value = true
+  searched.value = true
   try {
     if (searchMode.value === 'semantic') {
-      const res = await lostItemsApi.semanticSearch({
-        query: searchQuery.value,
-        limit: 50
-      })
+      const res = await lostItemsApi.semanticSearch({ query: searchQuery.value, limit: 50 })
       items.value = res.data.results
       total.value = res.data.results.length
     } else {
       const res = await lostItemsApi.search({
         query: searchQuery.value,
-        item_type: filterType.value,
-        status: filterStatus.value,
-        limit: 50
+        item_type: filterType.value || undefined,
+        status: filterStatus.value || undefined,
+        limit: 50,
       })
       items.value = res.data.results
       total.value = res.data.results.length
     }
   } catch (e) {
     console.error('搜索失败', e)
+  } finally {
+    loading.value = false
   }
+}
+
+const goDetail = (id) => {
+  router.push({ name: 'detail', params: { id } })
+}
+
+// 关键词高亮
+const highlight = (text) => {
+  if (!text) return ''
+  if (!searchQuery.value || !searched.value || searchMode.value === 'semantic') return escapeHtml(text)
+  const q = searchQuery.value.trim()
+  if (!q) return escapeHtml(text)
+  const escaped = escapeHtml(text)
+  const words = q.split(/\s+/).filter(Boolean)
+  let result = escaped
+  words.forEach(word => {
+    const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    result = result.replace(new RegExp(`(${escapedWord})`, 'gi'), '<mark class="highlight">$1</mark>')
+  })
+  return result
+}
+
+const escapeHtml = (str) => {
+  const div = document.createElement('div')
+  div.textContent = str
+  return div.innerHTML
 }
 
 const simColor = (score) => {
@@ -172,13 +216,54 @@ const formatTime = (time) => {
   margin-bottom: 20px;
 }
 
+.result-hint {
+  padding: 8px 16px;
+  margin-bottom: 16px;
+  background: #ecf5ff;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.result-hint em {
+  font-style: normal;
+  color: #409EFF;
+  font-weight: 600;
+}
+
+.semantic-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 11px;
+  vertical-align: middle;
+}
+
+/* 关键词高亮 */
+:deep(.highlight) {
+  background: #fff3cd;
+  color: #856404;
+  padding: 1px 2px;
+  border-radius: 2px;
+}
+
 .items-grid {
   margin-bottom: 20px;
+  min-height: 200px;
 }
 
 .item-card {
   height: 100%;
   position: relative;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.item-card:hover {
+  transform: translateY(-4px);
 }
 
 .similarity-badge {
@@ -225,6 +310,7 @@ const formatTime = (time) => {
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 10px;
+  flex-shrink: 0;
 }
 
 .status-tag.lost {

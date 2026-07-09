@@ -5,6 +5,16 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   plugins: [vue()],
   server: {
-    allowedHosts: true
-  }
+    allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://172.17.0.1:8000',
+        changeOrigin: true,
+      },
+      '/uploads': {
+        target: 'http://172.17.0.1:8000',
+        changeOrigin: true,
+      },
+    },
+  },
 })

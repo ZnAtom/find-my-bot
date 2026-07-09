@@ -1,41 +1,37 @@
 <template>
-  <div class="admin-page">
+  <div class="admin-page" v-loading="loading" element-loading-text="加载中...">
     <h2>管理后台</h2>
-    
+
+    <!-- 统计卡片 -->
     <div class="stats-cards">
-      <el-card class="stat-card">
-        <div class="stat-icon lost"><el-icon><HelpFilled /></el-icon></div>
-        <div class="stat-info">
-          <div class="stat-num">{{ stats.lost_count || 0 }}</div>
-          <div class="stat-label">待找回</div>
-        </div>
-      </el-card>
-      <el-card class="stat-card">
-        <div class="stat-icon found"><el-icon><CircleCheck /></el-icon></div>
-        <div class="stat-info">
-          <div class="stat-num">{{ stats.found_count || 0 }}</div>
-          <div class="stat-label">已找回</div>
-        </div>
-      </el-card>
-      <el-card class="stat-card">
-        <div class="stat-icon total"><el-icon><Box /></el-icon></div>
-        <div class="stat-info">
-          <div class="stat-num">{{ stats.total_items || 0 }}</div>
-          <div class="stat-label">总失物</div>
-        </div>
-      </el-card>
-      <el-card class="stat-card">
-        <div class="stat-icon user"><el-icon><User /></el-icon></div>
-        <div class="stat-info">
-          <div class="stat-num">{{ stats.user_count || 0 }}</div>
-          <div class="stat-label">用户数</div>
-        </div>
+      <el-card class="stat-card" v-for="s in statCards" :key="s.label">
+        <template v-if="loading">
+          <el-skeleton animated>
+            <template #template>
+              <div style="display:flex;align-items:center;gap:20px">
+                <el-skeleton-item variant="circle" style="width:60px;height:60px" />
+                <div>
+                  <el-skeleton-item variant="text" style="width:60px;height:28px" />
+                  <el-skeleton-item variant="text" style="width:40px;height:14px" />
+                </div>
+              </div>
+            </template>
+          </el-skeleton>
+        </template>
+        <template v-else>
+          <div :class="['stat-icon', s.cls]"><el-icon><component :is="s.icon" /></el-icon></div>
+          <div class="stat-info">
+            <div class="stat-num">{{ s.value }}</div>
+            <div class="stat-label">{{ s.label }}</div>
+          </div>
+        </template>
       </el-card>
     </div>
 
+    <!-- 表格 -->
     <div class="table-section">
       <h3>失物列表管理</h3>
-      <el-table :data="items" border>
+      <el-table :data="items" border v-loading="loading">
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="item_name" label="物品名称" />
         <el-table-column prop="item_type" label="类型" width="100" />
@@ -62,16 +58,15 @@
             {{ formatTime(scope.row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180">
+        <el-table-column label="操作" width="200">
           <template #default="scope">
+            <el-button type="text" size="small" @click="goDetail(scope.row.id)">查看</el-button>
             <el-button type="text" size="small" @click="editItem(scope.row)">编辑</el-button>
-            <el-button type="text" size="small" @click="deleteItem(scope.row.id)" style="color: #F56C6C;">删除</el-button>
-            <el-button 
-              v-if="scope.row.status === 'lost'" 
-              type="text" 
-              size="small" 
-              @click="markFound(scope.row.id)"
-              style="color: #67C23A;"
+            <el-button type="text" size="small" @click="deleteItem(scope.row.id)" style="color: #F56C6C">删除</el-button>
+            <el-button
+              v-if="scope.row.status === 'lost'"
+              type="text" size="small" @click="markFound(scope.row.id)"
+              style="color: #67C23A"
             >
               标记找回
             </el-button>
@@ -80,6 +75,7 @@
       </el-table>
     </div>
 
+    <!-- 向量详情弹窗 -->
     <el-dialog v-model="vectorDialogVisible" title="向量详情" width="700px">
       <template v-if="selectedItem">
         <p><strong>物品：</strong>{{ selectedItem.item_name }}</p>
@@ -88,6 +84,7 @@
       </template>
     </el-dialog>
 
+    <!-- 编辑弹窗 -->
     <el-dialog v-model="dialogVisible" title="编辑失物信息">
       <el-form :model="editForm" label-width="100px">
         <el-form-item label="物品名称">
@@ -103,7 +100,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="详细描述">
-          <el-textarea v-model="editForm.description" :rows="3" />
+          <el-input type="textarea" v-model="editForm.description" :rows="3" />
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="editForm.status">
@@ -121,13 +118,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { HelpFilled, CircleCheck, Box, User } from '@element-plus/icons-vue'
 import { lostItemsApi, statsApi } from '../api'
 
+const router = useRouter()
 const stats = ref({})
 const items = ref([])
+const loading = ref(true)
 const dialogVisible = ref(false)
 const vectorDialogVisible = ref(false)
 const selectedItem = ref(null)
@@ -136,30 +136,38 @@ const editForm = reactive({
   item_name: '',
   item_type: '',
   description: '',
-  status: 'lost'
+  status: 'lost',
 })
+
+const statCards = computed(() => [
+  { label: '待找回', value: stats.value.lost_count || 0, icon: HelpFilled, cls: 'lost' },
+  { label: '已找回', value: stats.value.found_count || 0, icon: CircleCheck, cls: 'found' },
+  { label: '总失物', value: stats.value.total_items || 0, icon: Box, cls: 'total' },
+  { label: '用户数', value: stats.value.user_count || 0, icon: User, cls: 'user' },
+])
 
 onMounted(() => {
-  loadStats()
-  loadItems()
+  loadAll()
 })
 
-const loadStats = async () => {
+const loadAll = async () => {
+  loading.value = true
   try {
-    const res = await statsApi.get()
-    stats.value = res.data
+    const [statsRes, itemsRes] = await Promise.all([
+      statsApi.get(),
+      lostItemsApi.getAll({ page: 1, page_size: 100 }),
+    ])
+    stats.value = statsRes.data
+    items.value = itemsRes.data.items
   } catch (e) {
-    console.error('加载统计数据失败', e)
+    console.error('加载失败', e)
+  } finally {
+    loading.value = false
   }
 }
 
-const loadItems = async () => {
-  try {
-    const res = await lostItemsApi.getAll({ page: 1, page_size: 100 })
-    items.value = res.data.items
-  } catch (e) {
-    console.error('加载失物列表失败', e)
-  }
+const goDetail = (id) => {
+  router.push({ name: 'detail', params: { id } })
 }
 
 const editItem = (row) => {
@@ -173,18 +181,15 @@ const editItem = (row) => {
 
 const saveEdit = async () => {
   try {
-    const res = await lostItemsApi.update(editForm.id, {
+    await lostItemsApi.update(editForm.id, {
       item_name: editForm.item_name,
       item_type: editForm.item_type,
       description: editForm.description,
-      status: editForm.status
+      status: editForm.status,
     })
-    if (res.status === 200) {
-      dialogVisible.value = false
-      loadItems()
-      loadStats()
-      ElMessage.success('保存成功')
-    }
+    dialogVisible.value = false
+    ElMessage.success('保存成功')
+    loadAll()
   } catch (e) {
     console.error('保存失败', e)
     ElMessage.error('保存失败')
@@ -196,14 +201,11 @@ const deleteItem = async (id) => {
     await ElMessageBox.confirm('确定要删除这条记录吗？', '警告', {
       type: 'warning',
       confirmButtonText: '删除',
-      cancelButtonText: '取消'
+      cancelButtonText: '取消',
     })
-    const res = await lostItemsApi.delete(id)
-    if (res.status === 200) {
-      loadItems()
-      loadStats()
-      ElMessage.success('删除成功')
-    }
+    await lostItemsApi.delete(id)
+    ElMessage.success('删除成功')
+    loadAll()
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') {
       console.error('删除失败', e)
@@ -214,12 +216,9 @@ const deleteItem = async (id) => {
 
 const markFound = async (id) => {
   try {
-    const res = await lostItemsApi.update(id, { status: 'found' })
-    if (res.status === 200) {
-      loadItems()
-      loadStats()
-      ElMessage.success('标记成功')
-    }
+    await lostItemsApi.update(id, { status: 'found' })
+    ElMessage.success('标记成功')
+    loadAll()
   } catch (e) {
     console.error('标记失败', e)
     ElMessage.error('标记失败')
@@ -267,6 +266,9 @@ const showVector = (row) => {
 
 .stat-card {
   flex: 1;
+}
+
+.stat-card :deep(.el-card__body) {
   display: flex;
   align-items: center;
   gap: 20px;
@@ -280,27 +282,13 @@ const showVector = (row) => {
   align-items: center;
   justify-content: center;
   font-size: 24px;
+  flex-shrink: 0;
 }
 
-.stat-icon.lost {
-  background: #fef0f0;
-  color: #F56C6C;
-}
-
-.stat-icon.found {
-  background: #f0f9eb;
-  color: #67C23A;
-}
-
-.stat-icon.total {
-  background: #ecf5ff;
-  color: #409EFF;
-}
-
-.stat-icon.user {
-  background: #fdf6ec;
-  color: #E6A23C;
-}
+.stat-icon.lost { background: #fef0f0; color: #F56C6C; }
+.stat-icon.found { background: #f0f9eb; color: #67C23A; }
+.stat-icon.total { background: #ecf5ff; color: #409EFF; }
+.stat-icon.user { background: #fdf6ec; color: #E6A23C; }
 
 .stat-info .stat-num {
   font-size: 28px;

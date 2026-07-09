@@ -28,6 +28,10 @@ services:
       - "127.0.0.1:5173:5173"
     volumes:
       - ./frontend/src:/app/src
+      - ./frontend/vite.config.js:/app/vite.config.js
+      - ./frontend/.env.development:/app/.env.development
+      - ./frontend/.env.production:/app/.env.production
+      - ./frontend/index.html:/app/index.html
     networks:
       - app-network
   # QQ 机器人服务（需要时取消注释，镜像可能需先手动拉取）

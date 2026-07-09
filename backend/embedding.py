@@ -21,7 +21,7 @@ def init_model():
         device = "cpu"
         dtype = torch.float32
 
-    local_only = True
+    local_only = os.environ.get("HF_LOCAL_ONLY", "0") == "1"
     _model = SentenceTransformer(
         "Qwen/Qwen3-VL-Embedding-2B",
         device=device,

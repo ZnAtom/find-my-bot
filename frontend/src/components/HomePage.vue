@@ -42,13 +42,33 @@
     <div class="content-section">
       <div class="section-header">
         <h2>最新失物信息</h2>
-        <el-button type="text" @click="router.push({ name: 'lost' })">查看全部</el-button>
+        <el-button type="text" @click="router.push({ name: 'lost' })">查看全部 →</el-button>
       </div>
-      <el-row :gutter="20">
-        <el-col :span="6" v-for="item in latestItems" :key="item.id">
+
+      <!-- 加载骨架 -->
+      <el-row :gutter="20" v-if="loading">
+        <el-col :span="6" v-for="i in 4" :key="i">
           <el-card class="item-card">
+            <el-skeleton animated>
+              <template #template>
+                <el-skeleton-item variant="image" style="width: 100%; height: 120px" />
+                <div style="padding: 12px">
+                  <el-skeleton-item variant="text" style="width: 60%" />
+                  <el-skeleton-item variant="text" style="width: 30%; margin-top: 6px" />
+                  <el-skeleton-item variant="text" style="width: 80%; margin-top: 6px" />
+                </div>
+              </template>
+            </el-skeleton>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <!-- 内容 -->
+      <el-row :gutter="20" v-else>
+        <el-col :span="6" v-for="item in latestItems" :key="item.id">
+          <el-card class="item-card" shadow="hover" @click="goDetail(item.id)">
             <div class="item-image">
-              <img v-if="item.image_url" :src="item.image_url.split(',')[0]" alt="物品图片" />
+              <img v-if="item.image_url" :src="resolveImageUrl(item.image_url.split(',')[0])" alt="物品图片" />
               <el-icon v-else size="48" color="#909399"><Picture /></el-icon>
             </div>
             <div class="item-info">
@@ -63,6 +83,9 @@
           </el-card>
         </el-col>
       </el-row>
+
+      <!-- 空状态 -->
+      <el-empty v-if="!loading && latestItems.length === 0" description="还没有失物信息，去发布一条吧" />
     </div>
   </div>
 </template>
@@ -71,11 +94,12 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Box, HelpFilled, CircleCheck, User, Picture, MapLocation } from '@element-plus/icons-vue'
-import { lostItemsApi, statsApi } from '../api'
+import { lostItemsApi, statsApi, resolveImageUrl } from '../api'
 
 const searchQuery = ref('')
 const stats = ref({})
 const latestItems = ref([])
+const loading = ref(true)
 
 onMounted(() => {
   loadStats()
@@ -92,15 +116,22 @@ const loadStats = async () => {
 }
 
 const loadLatestItems = async () => {
+  loading.value = true
   try {
     const res = await lostItemsApi.getAll({ page: 1, page_size: 4 })
     latestItems.value = res.data.items || []
   } catch (e) {
     console.error('加载最新失物失败', e)
+  } finally {
+    loading.value = false
   }
 }
 
 const router = useRouter()
+
+const goDetail = (id) => {
+  router.push({ name: 'detail', params: { id } })
+}
 
 const handleSearch = () => {
   if (searchQuery.value.trim()) {
@@ -191,6 +222,12 @@ const handleSearch = () => {
 
 .item-card {
   height: 100%;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.item-card:hover {
+  transform: translateY(-4px);
 }
 
 .item-image {
