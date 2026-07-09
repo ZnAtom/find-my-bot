@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: find-my-bot
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/ZnAtom/find-my-bot.git'
+    path: k8s
+    targetRevision: develop
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
