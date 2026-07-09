@@ -3,7 +3,9 @@ kind: Ingress
 metadata:
   name: foundit-ingress
   annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod-dns
     kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
     # Adjust proxy body size if you have large file uploads
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
 spec:
@@ -27,3 +29,7 @@ spec:
                 name: foundit-frontend
                 port:
                   number: 5173
+  tls:
+    - hosts:
+        - foundit.geekpie.club
+      secretName: foundit-tls
