@@ -1,4 +1,6 @@
-# 从零开始启动
+# 从零开始启动 (FoundIt)
+
+> **注**：本项目目前同时支持 **Docker**（适合本地开发和协作）和 **Kubernetes (K8s)**（适合生产环境全自动部署）。本教程的前半部分针对 Docker 协作者，K8s 生产部署教程请参见文末。
 
 ## 环境要求
 
@@ -192,38 +194,32 @@ HF_ENDPOINT=https://hf-mirror.com python -m uvicorn app:app ...
 
 模型下载完成后，后续可用 `HF_LOCAL_ONLY=1` 跳过网络请求直接加载本地缓存。
 
-## 13. K8s 部署与常见排错 (Kubernetes / GitOps)
+---
 
-如果您正在使用 ArgoCD 或 Kubernetes 将应用部署到云端集群，请注意以下常见陷阱及解决方案：
+## 13. Kubernetes (K8s) 生产部署（全自动 GitOps）
 
-### 13.1. Nginx 返回 502 Bad Gateway
-**原因**：后端容器在启动时需要下载大语言模型（如 Qwen3 2B，约 2GB），下载过程可能会持续数分钟。如果 K8s 没配置就绪探针（readinessProbe），Nginx Ingress 会在模型下载期间就将用户请求转发过去，由于 FastAPI 还没监听端口，所以直接返回 502。
-**解决**：在后端的 `Deployment` 配置文件中配置 `readinessProbe`，例如：
-```yaml
-readinessProbe:
-  httpGet:
-    path: /docs
-    port: 8000
-  initialDelaySeconds: 10
-  periodSeconds: 10
+如果您有 K8s 集群，本项目已经配置了完整的 **GitHub Actions + ArgoCD** 自动化发布流水线。
+
+### 自动化发布流程
+您**不需要**在服务器上执行任何手动命令，只要在本地推送代码，即可自动上线：
+
+```bash
+git add .
+git commit -m "feat: your new feature"
+git push origin develop
 ```
 
-### 13.2. 部署到云端后，打开前端页面报 403 Forbidden
-**原因**：Vite 5 默认具有严格的 Host 头校验。如果您通过自己的域名（而不是 localhost）访问 Vite 开发服务器（`npm run dev`），Vite 会为了防御 DNS 重绑定攻击直接拦截请求。
-**解决**：在前端的 `vite.config.js` 中配置 `server: { allowedHosts: true }`，或者将您的正式域名加入 allowedHosts 列表。
+**发生了什么？**
+1. **GitHub Actions** 会自动拉取代码并打包最新的 Docker 镜像（包含 Frontend, Backend, DB），并推送到 GitHub Container Registry (ghcr.io)。
+2. 镜像推送完成后，机器人会自动向仓库的 `k8s/kustomization.yaml` 推送带有最新镜像 tag 的 `chore(cd)` 提交。
+3. **ArgoCD** 会监听到 Git 仓库的变化，自动将最新的容器同步部署到 K8s 集群中。
+4. **零停机更新**：K8s 会自动拉取新镜像并平滑重启 Pod。对于 Backend，部署配置中自带 `readinessProbe`，K8s 会等待大模型下载完毕、FastAPI 完全就绪后再将流量放行，不会出现 502。
 
-### 13.3. 后端 Pod 不断重启 (CrashLoopBackOff)
-**原因**：如果您使用的是海外的模型源（如 HuggingFace），在国内 K8s 节点上极大概率会触发 `Connection reset by peer` 错误，导致容器崩溃并无限重启。或者 `DB_PASSWORD` 等关键连接环境变量缺失。
-**解决**：
-1. 检查环境变量中是否带全了所有数据库信息（`DB_USER`、`DB_PASSWORD`、`DB_HOST`、`DB_NAME`）。
-2. 在后端的 Kubernetes 环境变量 (env) 中强制注入国内镜像：
-```yaml
-- name: HF_ENDPOINT
-  value: "https://hf-mirror.com"
-```
+### K8s 目录结构说明
+相关的部署配置位于项目根目录的 `k8s/` 下：
+- `backend.yaml` / `frontend.yaml` / `db.yaml`：各服务的 Deployment 和 Service。
+- `ingress.yaml`：Nginx Ingress 路由配置（已集成 `cert-manager`，可全自动申请 HTTPS 证书）。
+- `kustomization.yaml`：资源入口及自动版本管理。
 
-### 13.4. Ingress HTTPS 证书报错 (ERR_SSL_PROTOCOL_ERROR)
-**原因**：通常是因为集群外部还有一层代理服务器（例如校园网的 Caddy/FRP 网关）。如果在您的 DNS 解析链路中，外部网关尝试接管 HTTPS 但又没有配置对应的证书，就会导致握手失败。
-**解决**：
-- 确保 CNAME 解析到了正确的入口 IP。如果是校园网，可以尝试直连 K8s 节点的内部域名。
-- 如果需要 K8s 自己签发证书，可以在 Ingress 的 annotations 中加上 `cert-manager.io/cluster-issuer: letsencrypt-prod-dns` 来使用 Cert-Manager 的 DNS 验证自动下发证书。
+### HTTPS 配置注意事项
+K8s 环境下已开启全自动 HTTPS（Let's Encrypt DNS-01），请确保您绑定的 CNAME 直接指向 K8s 集群的公网入口（例如 `andromeda.geekpie.club` 或 `acm.shanghaitech.edu.cn`），**不要**经过二次非透明代理（如额外的 Caddy 强制 HTTPS 拦截），否则会因为无法进行 SSL 握手导致访问失败。
