@@ -1,0 +1,41 @@
+name: 💡 Feature Request (新功能建议)
+description: 向我们提出您的绝妙点子，帮助 FoundIt 变得更好
+title: "[Feature] <简短描述您的建议>"
+labels: ["enhancement"]
+assignees:
+  - ZnAtom
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢您的建议！请尽可能详细地描述您的想法。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 这个功能想解决什么痛点？
+      description: 您的想法是否与某个您正在面临的问题有关？
+      placeholder: 例如：当我在搜索失物时，总是很难通过图片来筛选颜色……
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 您期望的解决方案是什么？
+      description: 请清晰简洁地描述您希望看到的功能是什么样的。
+      placeholder: 例如：希望能加上一个基于颜色的聚类筛选器……
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 您考虑过哪些替代方案？
+      description: 有没有其他现有的变通方法能暂时解决您的痛点？
+    validations:
+      required: false
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: 其他信息
+      description: 添加任何其他的上下文，比如草图、Mockup 或者是类似功能的其他产品参考。
+    validations:
+      required: false
