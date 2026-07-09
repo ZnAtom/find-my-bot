@@ -2,39 +2,54 @@
   <div class="home-page">
     <!-- Hero -->
     <div class="hero-section">
+      <div class="hero-bg-animated"></div>
       <div class="hero-content">
-        <h1>校园失物招领平台</h1>
-        <p>智能匹配 · 快速找回 · 服务师生</p>
-        <div class="search-box">
+        <h1 class="hero-title">校园失物招领平台</h1>
+        <p class="hero-subtitle">智能匹配 · 快速找回 · 服务师生</p>
+        <div class="search-box glass-card">
           <el-input
             v-model="searchQuery"
-            placeholder="搜索失物…"
-            prefix-icon="Search"
+            placeholder="搜索失物、招领信息…"
             size="large"
             @keyup.enter="handleSearch"
-          />
-          <el-button type="primary" size="large" @click="handleSearch">搜索</el-button>
+            class="search-input"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <el-button type="primary" size="large" round @click="handleSearch" class="search-btn">
+            全站搜索
+          </el-button>
         </div>
         <div class="quick-stats">
-          <div class="stat-item">
-            <el-icon size="24" color="#409EFF"><Box /></el-icon>
-            <span class="stat-value">{{ stats.total_items || 0 }}</span>
-            <span class="stat-label">总失物</span>
+          <div class="stat-card glass-card">
+            <el-icon size="28" color="var(--primary-color)"><Box /></el-icon>
+            <div class="stat-info">
+              <span class="stat-value">{{ stats.total_items || 0 }}</span>
+              <span class="stat-label">总失物</span>
+            </div>
           </div>
-          <div class="stat-item">
-            <el-icon size="24" color="#F56C6C"><HelpFilled /></el-icon>
-            <span class="stat-value">{{ stats.lost_count || 0 }}</span>
-            <span class="stat-label">待找回</span>
+          <div class="stat-card glass-card">
+            <el-icon size="28" color="var(--danger-color)"><HelpFilled /></el-icon>
+            <div class="stat-info">
+              <span class="stat-value">{{ stats.lost_count || 0 }}</span>
+              <span class="stat-label">待找回</span>
+            </div>
           </div>
-          <div class="stat-item">
-            <el-icon size="24" color="#67C23A"><CircleCheck /></el-icon>
-            <span class="stat-value">{{ stats.found_count || 0 }}</span>
-            <span class="stat-label">已找回</span>
+          <div class="stat-card glass-card">
+            <el-icon size="28" color="var(--success-color)"><CircleCheck /></el-icon>
+            <div class="stat-info">
+              <span class="stat-value">{{ stats.found_count || 0 }}</span>
+              <span class="stat-label">已找回</span>
+            </div>
           </div>
-          <div class="stat-item">
-            <el-icon size="24" color="#E6A23C"><User /></el-icon>
-            <span class="stat-value">{{ stats.user_count || 0 }}</span>
-            <span class="stat-label">用户数</span>
+          <div class="stat-card glass-card">
+            <el-icon size="28" color="var(--warning-color)"><User /></el-icon>
+            <div class="stat-info">
+              <span class="stat-value">{{ stats.user_count || 0 }}</span>
+              <span class="stat-label">用户数</span>
+            </div>
           </div>
         </div>
       </div>
@@ -43,21 +58,26 @@
     <!-- 最新失物 -->
     <div class="content-section">
       <div class="section-header">
-        <h2>最新失物信息</h2>
-        <el-button type="text" @click="router.push({ name: 'lost' })">查看全部 →</el-button>
+        <div class="title-group">
+          <h2>最新动态</h2>
+          <p class="subtitle">实时更新的失物与招领信息</p>
+        </div>
+        <el-button round class="view-all-btn" @click="router.push({ name: 'lost' })">
+          浏览全部 <el-icon class="el-icon--right"><ArrowRight /></el-icon>
+        </el-button>
       </div>
 
       <!-- 加载骨架 -->
-      <el-row :gutter="20" v-if="loading">
-        <el-col :xs="12" :sm="12" :md="6" v-for="i in 4" :key="i">
-          <el-card class="item-card">
+      <el-row :gutter="24" v-if="loading">
+        <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="i in 4" :key="i">
+          <el-card class="modern-card skeleton-card" shadow="never">
             <el-skeleton animated>
               <template #template>
-                <el-skeleton-item variant="image" style="width:100%;height:120px" />
-                <div style="padding:12px">
-                  <el-skeleton-item variant="text" style="width:60%" />
-                  <el-skeleton-item variant="text" style="width:30%;margin-top:6px" />
-                  <el-skeleton-item variant="text" style="width:80%;margin-top:6px" />
+                <el-skeleton-item variant="image" class="card-img-skeleton" />
+                <div style="padding:16px">
+                  <el-skeleton-item variant="text" style="width:60%; height:20px" />
+                  <el-skeleton-item variant="text" style="width:40%; margin-top:12px" />
+                  <el-skeleton-item variant="text" style="width:90%; margin-top:12px" />
                 </div>
               </template>
             </el-skeleton>
@@ -66,27 +86,40 @@
       </el-row>
 
       <!-- 内容 -->
-      <el-row :gutter="20" v-else>
-        <el-col :xs="12" :sm="12" :md="6" v-for="item in latestItems" :key="item.id">
-          <el-card class="item-card" shadow="hover" @click="goDetail(item.id)">
-            <div class="item-image">
-              <img v-if="item.image_url" :src="resolveImageUrl(item.image_url.split(',')[0])" alt="物品图片" />
-              <el-icon v-else size="48" color="#909399"><Picture /></el-icon>
-            </div>
-            <div class="item-info">
-              <h3>{{ item.item_name }}</h3>
-              <p class="item-type">{{ item.item_type }}</p>
-              <p class="item-desc">{{ item.description }}</p>
-              <div class="item-meta">
-                <span class="location"><el-icon><MapLocation /></el-icon>{{ item.location }}</span>
-                <span :class="['status', item.status]">{{ item.status === 'lost' ? '丢失' : '已找回' }}</span>
+      <el-row :gutter="24" v-else-if="latestItems.length > 0">
+        <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in latestItems" :key="item.id">
+          <div class="modern-card" @click="goDetail(item.id)">
+            <div class="card-image-wrapper">
+              <img v-if="item.image_url" :src="resolveImageUrl(item.image_url.split(',')[0])" alt="物品图片" class="card-img" />
+              <div v-else class="card-img-placeholder">
+                <el-icon size="48" color="#c0c4cc"><Picture /></el-icon>
+              </div>
+              <div :class="['status-badge', item.status]">
+                {{ item.status === 'lost' ? '丢失' : '已找回' }}
               </div>
             </div>
-          </el-card>
+            <div class="card-content">
+              <div class="card-meta">
+                <span class="item-type">{{ item.item_type || '未分类' }}</span>
+                <span class="time-ago">{{ formatDate(item.created_at) }}</span>
+              </div>
+              <h3 class="card-title">{{ item.item_name }}</h3>
+              <p class="card-desc">{{ item.description || '无详细描述' }}</p>
+              <div class="card-footer">
+                <span class="location">
+                  <el-icon><MapLocation /></el-icon> {{ item.location || '未知地点' }}
+                </span>
+              </div>
+            </div>
+          </div>
         </el-col>
       </el-row>
 
-      <el-empty v-if="!loading && latestItems.length === 0" description="还没有失物信息，去发布一条吧" />
+      <div v-else class="empty-state glass-card">
+        <el-empty description="暂时还没有失物信息哦，去发布第一条吧！">
+          <el-button type="primary" round size="large" @click="router.push({ name: 'create' })">立即发布</el-button>
+        </el-empty>
+      </div>
     </div>
   </div>
 </template>
@@ -94,7 +127,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Box, HelpFilled, CircleCheck, User, Picture, MapLocation } from '@element-plus/icons-vue'
+import { Search, Box, HelpFilled, CircleCheck, User, Picture, MapLocation, ArrowRight } from '@element-plus/icons-vue'
 import { lostItemsApi, statsApi, resolveImageUrl } from '../api'
 
 const searchQuery = ref('')
@@ -138,77 +171,140 @@ const handleSearch = () => {
     router.push({ name: 'lost', query: { q: searchQuery.value.trim() } })
   }
 }
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
 </script>
 
 <style scoped>
 .home-page {
-  min-height: calc(100vh - 60px);
+  min-height: calc(100vh - var(--header-height));
 }
 
 /* ===== Hero ===== */
 .hero-section {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 80px 0;
+  position: relative;
+  padding: 100px 0 120px;
   text-align: center;
+  overflow: hidden;
+  background-color: var(--background-color);
 }
 
-.hero-content h1 {
-  font-size: 48px;
-  color: white;
-  margin: 0 0 16px;
+.hero-bg-animated {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15) 0%, rgba(236, 72, 153, 0.05) 50%, transparent 100%);
+  animation: rotateBg 30s linear infinite;
+  z-index: 0;
 }
 
-.hero-content > p {
-  font-size: 20px;
-  color: rgba(255,255,255,0.8);
-  margin-bottom: 40px;
+@keyframes rotateBg {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
-.search-box {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  max-width: 600px;
+.hero-content {
+  position: relative;
+  z-index: 1;
+  max-width: 1000px;
   margin: 0 auto;
   padding: 0 20px;
 }
 
-.search-box :deep(.el-input__wrapper) {
-  border-radius: 25px 0 0 25px;
+.hero-title {
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, var(--text-primary) 0%, #475569 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-.search-box :deep(.el-button) {
-  border-radius: 0 25px 25px 0;
+.hero-subtitle {
+  font-size: 22px;
+  color: var(--text-secondary);
+  margin-bottom: 48px;
+  font-weight: 400;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 8px 8px 8px 24px;
+  border-radius: 50px;
+  background: var(--surface-color);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.05);
+}
+
+.search-input :deep(.el-input__wrapper) {
+  box-shadow: none !important;
+  background: transparent;
+  padding: 0;
+  font-size: 16px;
+}
+
+.search-btn {
+  padding: 12px 32px;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .quick-stats {
   display: flex;
   justify-content: center;
-  gap: 60px;
-  margin-top: 60px;
+  gap: 24px;
+  margin-top: 80px;
+  flex-wrap: wrap;
 }
 
-.stat-item {
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 32px;
+  background: var(--surface-color);
+  border-radius: var(--border-radius-lg);
+  min-width: 200px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.03);
+  transition: transform 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-5px);
+}
+
+.stat-info {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  color: white;
+  align-items: flex-start;
 }
 
 .stat-value {
-  font-size: 36px;
-  font-weight: bold;
-  margin: 10px 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
 }
 
 .stat-label {
   font-size: 14px;
-  opacity: 0.8;
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 /* ===== 内容区 ===== */
 .content-section {
-  padding: 40px;
+  padding: 60px 20px 100px;
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -216,149 +312,214 @@ const handleSearch = () => {
 .section-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
+  margin-bottom: 40px;
+}
+
+.title-group h2 {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.title-group .subtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.view-all-btn {
+  font-weight: 600;
+}
+
+/* ===== 现代卡片 ===== */
+.modern-card {
+  background: var(--surface-color);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.03);
+  border: 1px solid var(--border-color);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   margin-bottom: 24px;
 }
 
-.section-header h2 {
-  font-size: 22px;
-  font-weight: bold;
-  margin: 0;
+.modern-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+  border-color: transparent;
 }
 
-/* ===== 卡片 ===== */
-.item-card {
-  height: 100%;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-  margin-bottom: 20px;
-}
-
-.item-card:hover {
-  transform: translateY(-4px);
-}
-
-.item-image {
-  height: 120px;
-  background: #f5f7fa;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 12px;
+.card-image-wrapper {
+  position: relative;
+  height: 200px;
   overflow: hidden;
-  border-radius: 4px;
+  background: #f1f5f9;
 }
 
-.item-image img {
+.card-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 0.5s ease;
 }
 
-.item-info h3 {
-  font-size: 15px;
-  font-weight: bold;
-  margin: 0 0 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.modern-card:hover .card-img {
+  transform: scale(1.05);
 }
 
-.item-type {
+.card-img-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-badge {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  padding: 6px 12px;
+  border-radius: 20px;
   font-size: 12px;
-  color: #409EFF;
-  margin: 0 0 6px;
+  font-weight: 700;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.item-desc {
-  font-size: 13px;
-  color: #606266;
-  margin: 0 0 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+.status-badge.lost {
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
 }
 
-.item-meta {
+.status-badge.found {
+  background: rgba(16, 185, 129, 0.9);
+  color: white;
+}
+
+.card-content {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.card-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 12px;
+}
+
+.item-type {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.1);
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.time-ago {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 20px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex-grow: 1;
+}
+
+.card-footer {
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
 }
 
 .location {
-  font-size: 12px;
-  color: #909399;
+  font-size: 13px;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
 }
 
-.status {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 10px;
+.skeleton-card {
+  padding: 0;
 }
 
-.status.lost { background: #fef0f0; color: #F56C6C; }
-.status.found { background: #f0f9eb; color: #67C23A; }
+.card-img-skeleton {
+  width: 100%;
+  height: 200px;
+}
+
+.empty-state {
+  padding: 60px 20px;
+  border-radius: var(--border-radius-lg);
+  text-align: center;
+}
 
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {
   .hero-section {
-    padding: 40px 16px;
+    padding: 60px 0 80px;
   }
 
-  .hero-content h1 {
-    font-size: 26px;
-    margin-bottom: 8px;
+  .hero-title {
+    font-size: 36px;
   }
 
-  .hero-content > p {
-    font-size: 14px;
-    margin-bottom: 24px;
+  .hero-subtitle {
+    font-size: 16px;
   }
 
   .search-box {
-    flex-direction: column;
-    gap: 8px;
-    padding: 0;
+    padding: 6px 6px 6px 16px;
   }
 
-  .search-box :deep(.el-input__wrapper) {
-    border-radius: 25px;
-  }
-
-  .search-box :deep(.el-button) {
-    border-radius: 25px;
-    width: 100%;
+  .search-btn {
+    padding: 10px 24px;
   }
 
   .quick-stats {
-    gap: 24px;
-    margin-top: 32px;
-    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 40px;
+  }
+
+  .stat-card {
+    min-width: 140px;
+    padding: 16px;
   }
 
   .stat-value {
     font-size: 24px;
   }
 
-  .stat-label {
-    font-size: 12px;
-  }
-
-  .content-section {
-    padding: 20px 12px;
-  }
-
-  .section-header h2 {
-    font-size: 18px;
-  }
-
-  .item-image {
-    height: 100px;
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
   }
 }
 </style>

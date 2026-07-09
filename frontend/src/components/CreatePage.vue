@@ -1,123 +1,146 @@
 <template>
   <div class="create-page">
-    <h2>发布失物信息</h2>
-    <el-form :model="formData" :rules="rules" ref="formRef" label-width="120px">
-      <el-form-item label="物品名称" prop="item_name">
-        <el-input v-model="formData.item_name" placeholder="请输入物品名称" />
-      </el-form-item>
+    <div class="form-container glass-card">
+      <h2 class="page-title">发布信息</h2>
+      <el-steps :active="currentStep" finish-status="success" align-center class="steps-nav">
+        <el-step title="基础信息" icon="Edit" />
+        <el-step title="详情特征" icon="Picture" />
+        <el-step title="联系方式" icon="User" />
+      </el-steps>
 
-      <el-form-item label="物品类型" prop="item_type">
-        <el-select v-model="formData.item_type" placeholder="请选择物品类型">
-          <el-option label="电子产品" value="电子产品" />
-          <el-option label="证件卡片" value="证件卡片" />
-          <el-option label="衣物鞋帽" value="衣物鞋帽" />
-          <el-option label="学习用品" value="学习用品" />
-          <el-option label="其他" value="其他" />
-        </el-select>
-      </el-form-item>
+      <div class="form-wrapper">
+        <el-form :model="formData" :rules="rules" ref="formRef" label-position="top">
+          <!-- 第一步：基础信息 -->
+          <div v-show="currentStep === 0" class="step-content">
+            <el-form-item label="信息类型" prop="status">
+              <el-radio-group v-model="formData.status" size="large" class="type-selector">
+                <el-radio-button value="lost">
+                  <div class="radio-content">
+                    <el-icon><Warning /></el-icon>
+                    <span>我丢了东西 (寻物)</span>
+                  </div>
+                </el-radio-button>
+                <el-radio-button value="found">
+                  <div class="radio-content">
+                    <el-icon><CircleCheck /></el-icon>
+                    <span>我捡到东西 (招领)</span>
+                  </div>
+                </el-radio-button>
+              </el-radio-group>
+            </el-form-item>
 
-      <el-form-item label="详细描述">
-        <el-input
-          type="textarea"
-          v-model="formData.description"
-          placeholder="请详细描述物品特征"
-          :rows="4"
-        />
-      </el-form-item>
+            <el-form-item label="物品名称" prop="item_name">
+              <el-input v-model="formData.item_name" placeholder="请输入核心关键字，如“黑色双肩包”、“校园卡”" size="large" />
+            </el-form-item>
 
-      <el-form-item label="丢失地点" prop="location">
-        <el-select
-          v-model="formData.location"
-          placeholder="请选择或输入地点"
-          filterable
-          allow-create
-          default-first-option
-          style="width: 100%"
-        >
-          <el-option
-            v-for="loc in presetLocations"
-            :key="loc"
-            :label="loc"
-            :value="loc"
-          />
-        </el-select>
-      </el-form-item>
+            <el-form-item label="物品分类" prop="item_type">
+              <el-select v-model="formData.item_type" placeholder="请选择物品分类" size="large" style="width: 100%">
+                <el-option label="证件卡片" value="证件卡片" />
+                <el-option label="电子产品" value="电子产品" />
+                <el-option label="衣物鞋帽" value="衣物鞋帽" />
+                <el-option label="学习用品" value="学习用品" />
+                <el-option label="钱包钥匙" value="钱包钥匙" />
+                <el-option label="其他" value="其他" />
+              </el-select>
+            </el-form-item>
+          </div>
 
-      <el-form-item label="丢失时间" prop="lost_time">
-        <el-date-picker 
-          v-model="formData.lost_time" 
-          type="datetime" 
-          placeholder="请选择丢失时间"
-          value-format="YYYY-MM-DD HH:mm:ss"
-        />
-      </el-form-item>
+          <!-- 第二步：详情特征 -->
+          <div v-show="currentStep === 1" class="step-content">
+            <el-form-item label="丢失/拾获地点" prop="location">
+              <el-select
+                v-model="formData.location"
+                placeholder="请选择或输入地点"
+                filterable
+                allow-create
+                default-first-option
+                size="large"
+                style="width: 100%"
+              >
+                <el-option v-for="loc in presetLocations" :key="loc" :label="loc" :value="loc" />
+              </el-select>
+            </el-form-item>
 
-      <el-form-item label="当前状态">
-        <el-radio-group v-model="formData.status">
-          <el-radio value="lost">丢失</el-radio>
-          <el-radio value="found">已找回</el-radio>
-        </el-radio-group>
-      </el-form-item>
+            <el-form-item label="详细特征描述" prop="description">
+              <el-input
+                type="textarea"
+                v-model="formData.description"
+                placeholder="请详细描述物品颜色、品牌、特殊标记等特征，越详细越容易被 AI 匹配到"
+                :rows="4"
+              />
+            </el-form-item>
 
-      <el-form-item label="物品图片">
-        <el-upload
-          action="/api/upload"
-          :before-upload="beforeUpload"
-          :on-change="handleChange"
-          :on-success="handleUploadSuccess"
-          :on-error="handleUploadError"
-          :on-remove="handleRemove"
-          :file-list="fileList"
-          list-type="picture-card"
-          :limit="3"
-          accept="image/*"
-        >
-          <el-icon><Plus /></el-icon>
-        </el-upload>
-        <div class="upload-tip">支持 jpg/png/gif/webp，最多 3 张，每张不超过 5MB</div>
-      </el-form-item>
+            <el-form-item label="上传图片 (可选，但推荐)">
+              <el-upload
+                class="image-upload"
+                action="/api/upload"
+                :before-upload="beforeUpload"
+                :on-success="handleUploadSuccess"
+                :on-error="handleUploadError"
+                :on-remove="handleRemove"
+                :file-list="fileList"
+                list-type="picture-card"
+                :limit="3"
+                accept="image/*"
+              >
+                <div class="upload-trigger">
+                  <el-icon size="28"><Plus /></el-icon>
+                  <span>添加图片</span>
+                </div>
+              </el-upload>
+              <div class="upload-tip">AI 会自动识别图片内容进行双重匹配，支持最多3张</div>
+            </el-form-item>
+          </div>
 
-      <el-form-item label="联系人" prop="contact_person">
-        <el-input v-model="formData.contact_person" placeholder="请输入联系人姓名" />
-      </el-form-item>
+          <!-- 第三步：联系方式 -->
+          <div v-show="currentStep === 2" class="step-content">
+            <el-form-item label="联系人姓名" prop="contact_person">
+              <el-input v-model="formData.contact_person" placeholder="您的称呼，如“王同学”" size="large">
+                <template #prefix><el-icon><User /></el-icon></template>
+              </el-input>
+            </el-form-item>
 
-      <el-form-item label="联系电话" prop="contact_phone">
-        <el-input v-model="formData.contact_phone" placeholder="请输入联系电话" />
-      </el-form-item>
+            <el-form-item label="手机号码" prop="contact_phone">
+              <el-input v-model="formData.contact_phone" placeholder="用于平台通知，不会直接公开" size="large">
+                <template #prefix><el-icon><Phone /></el-icon></template>
+              </el-input>
+            </el-form-item>
 
-      <el-form-item label="QQ号码">
-        <el-input v-model="formData.contact_qq" placeholder="请输入QQ号码" />
-      </el-form-item>
+            <el-form-item label="QQ号码 (可选)" prop="contact_qq">
+              <el-input v-model="formData.contact_qq" placeholder="方便拾获者/失主直接联系您" size="large">
+                <template #prefix><el-icon><ChatDotRound /></el-icon></template>
+              </el-input>
+            </el-form-item>
+          </div>
+        </el-form>
 
-      <el-form-item>
-        <el-button type="primary" @click="submitForm">提交发布</el-button>
-        <el-button @click="resetForm">重置</el-button>
-      </el-form-item>
-    </el-form>
+        <div class="form-actions">
+          <el-button v-if="currentStep > 0" size="large" @click="prevStep" round>上一步</el-button>
+          <el-button v-if="currentStep < 2" type="primary" size="large" @click="nextStep" round>下一步</el-button>
+          <el-button v-if="currentStep === 2" type="success" size="large" :loading="submitting" @click="submitForm" round>
+            发布信息
+          </el-button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Edit, Picture, User, Phone, ChatDotRound, Warning, CircleCheck } from '@element-plus/icons-vue'
 import { lostItemsApi } from '../api'
 
+const router = useRouter()
 const formRef = ref(null)
+const currentStep = ref(0)
+const submitting = ref(false)
 const uploadedUrls = ref([])
 const fileList = ref([])
 
-const presetLocations = [
-  '图书馆',
-  '教学楼1号楼',
-  '教学楼2号楼',
-  '教学楼3号楼',
-  '食堂',
-  '宿舍区',
-  '体育馆',
-  '学生活动中心',
-  '其他'
-]
+const presetLocations = ['图书馆', '教学楼1号楼', '教学楼2号楼', '教学楼3号楼', '食堂', '宿舍区', '体育馆', '学生活动中心', '其他']
 
 const formData = reactive({
   item_name: '',
@@ -133,63 +156,58 @@ const formData = reactive({
 })
 
 const rules = {
-  item_name: [
-    { required: true, message: '请输入物品名称', trigger: 'blur' }
-  ],
-  item_type: [
-    { required: true, message: '请选择物品类型', trigger: 'change' }
-  ],
-  location: [
-    { required: true, message: '请输入丢失地点', trigger: 'blur' }
-  ],
-  contact_person: [
-    { required: true, message: '请输入联系人姓名', trigger: 'blur' }
-  ],
-  contact_phone: [
-    { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' }
-  ]
+  item_name: [{ required: true, message: '请输入物品名称', trigger: 'blur' }],
+  item_type: [{ required: true, message: '请选择物品分类', trigger: 'change' }],
+  location: [{ required: true, message: '请输入丢失/拾获地点', trigger: 'blur' }],
+  description: [{ required: true, message: '请输入详细特征', trigger: 'blur' }],
+  contact_person: [{ required: true, message: '请输入联系人', trigger: 'blur' }],
+  contact_phone: [{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' }]
 }
 
-// 上传前校验
+const nextStep = async () => {
+  if (!formRef.value) return
+  // 分步验证字段
+  let fieldsToValidate = []
+  if (currentStep.value === 0) fieldsToValidate = ['item_name', 'item_type']
+  if (currentStep.value === 1) fieldsToValidate = ['location', 'description']
+  
+  try {
+    await formRef.value.validateField(fieldsToValidate)
+    currentStep.value++
+  } catch (err) {
+    // 验证失败
+  }
+}
+
+const prevStep = () => {
+  currentStep.value--
+}
+
 const beforeUpload = (file) => {
-  // 允许 type 为空的情况（部分浏览器对某些文件类型返回空 MIME）
   const isImage = !file.type || file.type.startsWith('image/')
   if (!isImage) {
-    ElMessage.error(`不支持的文件类型: "${file.type}"，只能上传图片文件`)
+    ElMessage.error('只能上传图片文件')
     return false
   }
-  const isLt5M = file.size / 1024 / 1024 < 5
-  if (!isLt5M) {
-    ElMessage.error(`图片大小 ${(file.size / 1024 / 1024).toFixed(1)}MB 超过 5MB 限制`)
+  if (file.size / 1024 / 1024 > 5) {
+    ElMessage.error('图片大小不能超过 5MB')
     return false
   }
-  // 通过校验，可以看到这条消息说明 beforeUpload 正常
-  ElMessage.info(`已选择: ${file.name} (${(file.size / 1024).toFixed(0)}KB)，开始上传...`)
   return true
 }
 
-// 文件选择变化（诊断用）
-const handleChange = (file, fileListData) => {
-  console.log('el-upload change:', file.name, file.status, file.size)
-}
-
-// el-upload 上传成功回调
 const handleUploadSuccess = (response) => {
-  ElMessage.success('图片上传成功')
   if (response.url) {
     uploadedUrls.value.push(response.url)
     formData.image_url = uploadedUrls.value.join(',')
   }
 }
 
-// el-upload 上传失败回调
 const handleUploadError = (err) => {
-  console.error('upload error:', err)
-  ElMessage.error('图片上传失败，请检查网络或文件格式')
+  ElMessage.error('图片上传失败')
 }
 
 const handleRemove = (file) => {
-  // el-upload 的 file 对象中，response 包含我们 onSuccess 时传入的 data
   const url = file.response?.url || file.url
   if (url) {
     uploadedUrls.value = uploadedUrls.value.filter(u => u !== url)
@@ -198,15 +216,15 @@ const handleRemove = (file) => {
 }
 
 const submitForm = async () => {
-  // 跳过表单验证失败的 catch（Element Plus 会自动显示验证错误）
   try {
     await formRef.value.validate()
   } catch {
+    ElMessage.warning('请检查并完善所有必填信息')
     return
   }
 
+  submitting.value = true
   try {
-    // 构建提交数据：过滤空字符串，避免 PostgreSQL 解析空字符串报错
     const payload = {}
     for (const [key, value] of Object.entries(formData)) {
       if (value !== '' && value !== null && value !== undefined) {
@@ -215,63 +233,137 @@ const submitForm = async () => {
     }
     const res = await lostItemsApi.create(payload)
     if (res.status === 200) {
-      ElMessage.success('发布成功！')
-      resetForm()
+      ElMessage.success('信息发布成功！AI 已记录您的物品特征。')
+      router.push({ name: 'detail', params: { id: res.data.id } })
     }
   } catch (e) {
-    if (e.response?.data?.detail) {
-      ElMessage.error('发布失败：' + e.response.data.detail)
-    } else {
-      ElMessage.error('发布失败，请重试')
-    }
+    ElMessage.error('发布失败：' + (e.response?.data?.detail || '未知错误'))
+  } finally {
+    submitting.value = false
   }
-}
-
-const resetForm = () => {
-  formRef.value.resetFields()
-  uploadedUrls.value = []
-  fileList.value = []
-  formData.image_url = ''
 }
 </script>
 
 <style scoped>
 .create-page {
+  padding: 40px 20px;
+  min-height: calc(100vh - var(--header-height));
+  display: flex;
+  justify-content: center;
+}
+
+.form-container {
+  width: 100%;
+  max-width: 680px;
   padding: 40px;
-  max-width: 600px;
-  margin: 0 auto;
 }
 
-.create-page h2 {
+.page-title {
   text-align: center;
-  margin-bottom: 30px;
-  font-size: 24px;
+  font-size: 28px;
+  font-weight: 800;
+  margin-bottom: 40px;
+  color: var(--text-primary);
 }
 
+.steps-nav {
+  margin-bottom: 40px;
+}
+
+.form-wrapper {
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.step-content {
+  flex-grow: 1;
+  animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 选项卡式单选框 */
+.type-selector {
+  width: 100%;
+  display: flex;
+}
+.type-selector :deep(.el-radio-button) {
+  flex: 1;
+}
+.type-selector :deep(.el-radio-button__inner) {
+  width: 100%;
+  padding: 16px;
+  border-radius: var(--border-radius-md) !important;
+  border: 1px solid var(--border-color) !important;
+  box-shadow: none !important;
+  margin-right: 12px;
+}
+.type-selector :deep(.el-radio-button:last-child .el-radio-button__inner) {
+  margin-right: 0;
+}
+.type-selector :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  border-color: var(--primary-color) !important;
+  background-color: rgba(99, 102, 241, 0.05);
+  color: var(--primary-color);
+  box-shadow: 0 0 0 1px var(--primary-color) !important;
+}
+
+.radio-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* 上传样式 */
+.upload-trigger {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.upload-trigger span {
+  font-size: 12px;
+  margin-top: 8px;
+}
 .upload-tip {
   font-size: 12px;
-  color: #909399;
-  margin-top: 4px;
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-color);
+}
+.form-actions .el-button {
+  min-width: 120px;
 }
 
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {
   .create-page {
-    padding: 16px;
+    padding: 20px 12px;
   }
-
-  .create-page h2 {
-    font-size: 20px;
-    margin-bottom: 20px;
+  .form-container {
+    padding: 24px 16px;
   }
-
-  .create-page :deep(.el-form-item__label) {
-    width: 80px !important;
-    font-size: 13px;
+  .steps-nav {
+    display: none; /* 手机端隐藏步骤条，避免拥挤，可依靠按钮提示 */
   }
-
-  .create-page :deep(.el-form-item__content) {
-    margin-left: 80px !important;
+  .page-title {
+    font-size: 24px;
+    margin-bottom: 24px;
   }
 }
 </style>

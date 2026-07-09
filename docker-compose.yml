@@ -20,6 +20,27 @@ services:
     networks:
       - app-network
 
+  backend:
+    build: ./backend
+    container_name: findmybot-backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://appuser:password@db:5432/lostfound
+      - DB_USER=appuser
+      - DB_PASSWORD=password
+      - DB_NAME=lostfound
+      - DB_HOST=db
+      - HF_ENDPOINT=https://hf-mirror.com
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+
   frontend:
     build: ./frontend
     container_name: findmybot-frontend

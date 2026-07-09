@@ -21,6 +21,14 @@ spec:
                 name: foundit-backend
                 port:
                   number: 8000
+          # Route /uploads to backend
+          - path: /uploads
+            pathType: Prefix
+            backend:
+              service:
+                name: foundit-backend
+                port:
+                  number: 8000
           # Route everything else to frontend
           - path: /
             pathType: Prefix
