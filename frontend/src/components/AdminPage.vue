@@ -329,4 +329,59 @@ const showVector = (row) => {
   border-radius: 4px;
   line-height: 1.8;
 }
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+  .admin-page {
+    padding: 12px;
+  }
+
+  .admin-page h2 {
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+
+  .stats-cards {
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .stat-card {
+    flex: 1 1 calc(50% - 10px);
+    min-width: 140px;
+  }
+
+  .stat-card :deep(.el-card__body) {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .stat-icon {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+
+  .stat-info .stat-num {
+    font-size: 22px;
+  }
+
+  .stat-info .stat-label {
+    font-size: 12px;
+  }
+
+  .table-section h3 {
+    font-size: 16px;
+  }
+
+  /* 表格横向滚动 */
+  .table-section :deep(.el-table) {
+    font-size: 12px;
+  }
+
+  .table-section :deep(.el-table__body-wrapper) {
+    overflow-x: auto;
+  }
+}
 </style>

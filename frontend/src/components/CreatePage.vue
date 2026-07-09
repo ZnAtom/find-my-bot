@@ -253,4 +253,25 @@ const resetForm = () => {
   color: #909399;
   margin-top: 4px;
 }
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+  .create-page {
+    padding: 16px;
+  }
+
+  .create-page h2 {
+    font-size: 20px;
+    margin-bottom: 20px;
+  }
+
+  .create-page :deep(.el-form-item__label) {
+    width: 80px !important;
+    font-size: 13px;
+  }
+
+  .create-page :deep(.el-form-item__content) {
+    margin-left: 80px !important;
+  }
+}
 </style>

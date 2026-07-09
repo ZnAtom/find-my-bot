@@ -1,5 +1,6 @@
 <template>
   <div class="home-page">
+    <!-- Hero -->
     <div class="hero-section">
       <div class="hero-content">
         <h1>校园失物招领平台</h1>
@@ -7,7 +8,7 @@
         <div class="search-box">
           <el-input
             v-model="searchQuery"
-            placeholder="搜索失物信息，如：手机、钱包、校园卡..."
+            placeholder="搜索失物…"
             prefix-icon="Search"
             size="large"
             @keyup.enter="handleSearch"
@@ -39,6 +40,7 @@
       </div>
     </div>
 
+    <!-- 最新失物 -->
     <div class="content-section">
       <div class="section-header">
         <h2>最新失物信息</h2>
@@ -47,15 +49,15 @@
 
       <!-- 加载骨架 -->
       <el-row :gutter="20" v-if="loading">
-        <el-col :span="6" v-for="i in 4" :key="i">
+        <el-col :xs="12" :sm="12" :md="6" v-for="i in 4" :key="i">
           <el-card class="item-card">
             <el-skeleton animated>
               <template #template>
-                <el-skeleton-item variant="image" style="width: 100%; height: 120px" />
-                <div style="padding: 12px">
-                  <el-skeleton-item variant="text" style="width: 60%" />
-                  <el-skeleton-item variant="text" style="width: 30%; margin-top: 6px" />
-                  <el-skeleton-item variant="text" style="width: 80%; margin-top: 6px" />
+                <el-skeleton-item variant="image" style="width:100%;height:120px" />
+                <div style="padding:12px">
+                  <el-skeleton-item variant="text" style="width:60%" />
+                  <el-skeleton-item variant="text" style="width:30%;margin-top:6px" />
+                  <el-skeleton-item variant="text" style="width:80%;margin-top:6px" />
                 </div>
               </template>
             </el-skeleton>
@@ -65,7 +67,7 @@
 
       <!-- 内容 -->
       <el-row :gutter="20" v-else>
-        <el-col :span="6" v-for="item in latestItems" :key="item.id">
+        <el-col :xs="12" :sm="12" :md="6" v-for="item in latestItems" :key="item.id">
           <el-card class="item-card" shadow="hover" @click="goDetail(item.id)">
             <div class="item-image">
               <img v-if="item.image_url" :src="resolveImageUrl(item.image_url.split(',')[0])" alt="物品图片" />
@@ -84,7 +86,6 @@
         </el-col>
       </el-row>
 
-      <!-- 空状态 -->
       <el-empty v-if="!loading && latestItems.length === 0" description="还没有失物信息，去发布一条吧" />
     </div>
   </div>
@@ -100,6 +101,7 @@ const searchQuery = ref('')
 const stats = ref({})
 const latestItems = ref([])
 const loading = ref(true)
+const router = useRouter()
 
 onMounted(() => {
   loadStats()
@@ -127,8 +129,6 @@ const loadLatestItems = async () => {
   }
 }
 
-const router = useRouter()
-
 const goDetail = (id) => {
   router.push({ name: 'detail', params: { id } })
 }
@@ -145,6 +145,7 @@ const handleSearch = () => {
   min-height: calc(100vh - 60px);
 }
 
+/* ===== Hero ===== */
 .hero-section {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: 80px 0;
@@ -154,12 +155,12 @@ const handleSearch = () => {
 .hero-content h1 {
   font-size: 48px;
   color: white;
-  margin-bottom: 16px;
+  margin: 0 0 16px;
 }
 
-.hero-content p {
+.hero-content > p {
   font-size: 20px;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255,255,255,0.8);
   margin-bottom: 40px;
 }
 
@@ -169,6 +170,7 @@ const handleSearch = () => {
   gap: 10px;
   max-width: 600px;
   margin: 0 auto;
+  padding: 0 20px;
 }
 
 .search-box :deep(.el-input__wrapper) {
@@ -204,26 +206,32 @@ const handleSearch = () => {
   opacity: 0.8;
 }
 
+/* ===== 内容区 ===== */
 .content-section {
-  padding: 60px 40px;
+  padding: 40px;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
+  margin-bottom: 24px;
 }
 
 .section-header h2 {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: bold;
+  margin: 0;
 }
 
+/* ===== 卡片 ===== */
 .item-card {
   height: 100%;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
+  margin-bottom: 20px;
 }
 
 .item-card:hover {
@@ -236,8 +244,9 @@ const handleSearch = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 15px;
+  margin-bottom: 12px;
   overflow: hidden;
+  border-radius: 4px;
 }
 
 .item-image img {
@@ -247,21 +256,24 @@ const handleSearch = () => {
 }
 
 .item-info h3 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: bold;
-  margin-bottom: 5px;
+  margin: 0 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .item-type {
   font-size: 12px;
   color: #409EFF;
-  margin-bottom: 8px;
+  margin: 0 0 6px;
 }
 
 .item-desc {
   font-size: 13px;
   color: #606266;
-  margin-bottom: 12px;
+  margin: 0 0 10px;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -278,6 +290,9 @@ const handleSearch = () => {
 .location {
   font-size: 12px;
   color: #909399;
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .status {
@@ -286,13 +301,64 @@ const handleSearch = () => {
   border-radius: 10px;
 }
 
-.status.lost {
-  background: #fef0f0;
-  color: #F56C6C;
-}
+.status.lost { background: #fef0f0; color: #F56C6C; }
+.status.found { background: #f0f9eb; color: #67C23A; }
 
-.status.found {
-  background: #f0f9eb;
-  color: #67C23A;
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+  .hero-section {
+    padding: 40px 16px;
+  }
+
+  .hero-content h1 {
+    font-size: 26px;
+    margin-bottom: 8px;
+  }
+
+  .hero-content > p {
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+
+  .search-box {
+    flex-direction: column;
+    gap: 8px;
+    padding: 0;
+  }
+
+  .search-box :deep(.el-input__wrapper) {
+    border-radius: 25px;
+  }
+
+  .search-box :deep(.el-button) {
+    border-radius: 25px;
+    width: 100%;
+  }
+
+  .quick-stats {
+    gap: 24px;
+    margin-top: 32px;
+    flex-wrap: wrap;
+  }
+
+  .stat-value {
+    font-size: 24px;
+  }
+
+  .stat-label {
+    font-size: 12px;
+  }
+
+  .content-section {
+    padding: 20px 12px;
+  }
+
+  .section-header h2 {
+    font-size: 18px;
+  }
+
+  .item-image {
+    height: 100px;
+  }
 }
 </style>

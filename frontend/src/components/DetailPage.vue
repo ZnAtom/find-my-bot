@@ -167,7 +167,7 @@
       <div class="similar-section" v-if="similarItems.length > 0">
         <h2>🔗 相似物品推荐</h2>
         <el-row :gutter="16">
-          <el-col :span="6" v-for="sim in similarItems" :key="sim.id">
+          <el-col :xs="12" :sm="8" :md="6" v-for="sim in similarItems" :key="sim.id">
             <el-card class="similar-card" shadow="hover" @click="router.push({ name: 'detail', params: { id: sim.id } })">
               <div class="sim-image">
                 <img v-if="sim.image_url" :src="resolveImageUrl(sim.image_url.split(',')[0])" alt="" />
@@ -602,8 +602,13 @@ const simColor = (score) => {
 }
 
 @media (max-width: 768px) {
+  .detail-page {
+    padding: 12px;
+  }
+
   .detail-layout {
     grid-template-columns: 1fr;
+    gap: 20px;
   }
 
   .detail-gallery {
@@ -611,7 +616,32 @@ const simColor = (score) => {
   }
 
   .main-image {
-    height: 280px;
+    height: 240px;
+  }
+
+  .info-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .info-header h1 {
+    font-size: 22px;
+  }
+
+  .action-bar {
+    flex-direction: column;
+  }
+
+  .action-bar .el-button {
+    width: 100%;
+  }
+
+  .info-card :deep(.el-descriptions) {
+    --el-descriptions-item-bordered-label-background: #fafafa;
+  }
+
+  .similar-section h2 {
+    font-size: 18px;
   }
 }
 </style>
