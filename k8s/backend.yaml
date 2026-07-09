@@ -28,6 +28,8 @@ spec:
               value: "lostfound"
             - name: DB_HOST
               value: "foundit-db"
+            - name: HF_ENDPOINT
+              value: "https://hf-mirror.com"
           ports:
             - containerPort: 8000
               name: http
