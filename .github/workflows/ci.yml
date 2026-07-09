@@ -1,0 +1,98 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  GITHUB_ACTOR: ${{ github.actor }}
+  DB_IMAGE_NAME: ${{ github.repository }}-db
+  FRONTEND_IMAGE_NAME: ${{ github.repository }}-frontend
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed for pushing K8s yaml updates if using GitOps
+      packages: write # Needed to push images to ghcr.io
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for DB
+        id: meta-db
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.DB_IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+
+      - name: Build and push DB Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-db.outputs.tags }}
+          labels: ${{ steps.meta-db.outputs.labels }}
+
+      - name: Extract metadata (tags, labels) for Frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+
+      - name: Build and push Frontend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+
+      - name: Set up Kustomize
+        if: github.event_name != 'pull_request'
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Update K8s Manifests with new Image Tags
+        if: github.event_name != 'pull_request'
+        run: |
+          cd k8s
+          # Update the images to point to the new commit SHA
+          kustomize edit set image ghcr.io/${{ env.DB_IMAGE_NAME }}=ghcr.io/${{ env.DB_IMAGE_NAME }}:sha-${{ github.sha }}
+          kustomize edit set image ghcr.io/${{ env.FRONTEND_IMAGE_NAME }}=ghcr.io/${{ env.FRONTEND_IMAGE_NAME }}:sha-${{ github.sha }}
+          
+      - name: Commit and push K8s manifest changes (GitOps)
+        if: github.event_name != 'pull_request'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/kustomization.yaml
+          git commit -m "chore(cd): update image tags to sha-${{ github.sha }} [skip ci]" || echo "No changes to commit"
+          git push
+
+      # === DEPLOYMENT OPTIONS ===
+      # OPTION A: If you install a GitHub Self-Hosted Runner on your K8s node, uncomment this:
+      # - name: Deploy to Local K8s (Self-Hosted Runner)
+      #   if: github.event_name != 'pull_request'
+      #   run: |
+      #     kubectl apply -k k8s/
+
+      # OPTION B: If you use ArgoCD (GitOps), ArgoCD will automatically detect the commit we just pushed above!
+      # No further action needed here.

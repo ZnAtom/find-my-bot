@@ -9,7 +9,7 @@ services:
       POSTGRES_DB: lostfound
       HF_LOCAL_ONLY: "1"
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -25,7 +25,7 @@ services:
     container_name: findmybot-frontend
     restart: unless-stopped
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     volumes:
       - ./frontend/src:/app/src
     networks:

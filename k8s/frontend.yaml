@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: findmybot-frontend
+  labels:
+    app: findmybot-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: findmybot-frontend
+  template:
+    metadata:
+      labels:
+        app: findmybot-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/znatom/findmybot-frontend:latest
+          ports:
+            - containerPort: 5173
+              name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: findmybot-frontend
+  labels:
+    app: findmybot-frontend
+spec:
+  type: NodePort # Use NodePort to easily access it on local K8s
+  ports:
+    - port: 5173
+      targetPort: http
+      nodePort: 30173 # Fixed nodePort for easy access
+  selector:
+    app: findmybot-frontend
