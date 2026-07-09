@@ -73,9 +73,8 @@ async def upload_image(file: UploadFile = File(...), request: Request = None):
     except Exception:
         raise HTTPException(status_code=500, detail="文件保存失败")
 
-    # 动态构建访问 URL（不硬编码域名/端口）
-    base_url = str(request.base_url).rstrip("/")
-    file_url = f"{base_url}/uploads/{safe_name}"
+    # 返回相对路径 — 兼容开发代理和生产反向代理
+    file_url = f"/uploads/{safe_name}"
 
     return {"url": file_url, "filename": safe_name}
 
