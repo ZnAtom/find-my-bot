@@ -61,7 +61,7 @@
 
       <el-form-item label="物品图片">
         <el-upload
-          action="http://localhost:8000/api/upload"
+          action="/api/upload"
           :before-upload="beforeUpload"
           :on-change="handleChange"
           :on-success="handleUploadSuccess"

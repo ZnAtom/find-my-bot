@@ -4,10 +4,14 @@ kind: Kustomization
 resources:
 - db.yaml
 - frontend.yaml
+- backend.yaml
+- ingress.yaml
 
 # These image tags will be replaced dynamically by the CI/CD pipeline
 images:
 - name: ghcr.io/znatom/find-my-bot-db
   newTag: latest
 - name: ghcr.io/znatom/find-my-bot-frontend
+  newTag: latest
+- name: ghcr.io/znatom/find-my-bot-backend
   newTag: latest

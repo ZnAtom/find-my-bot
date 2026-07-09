@@ -68,6 +68,22 @@ jobs:
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
 
+      - name: Extract metadata (tags, labels) for Backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.REPO }}-backend
+          tags: |
+            type=sha,format=long
+
+      - name: Build and push Backend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+
       - name: Set up Kustomize
         if: github.event_name != 'pull_request'
         uses: imranismail/setup-kustomize@v2
@@ -79,6 +95,7 @@ jobs:
           # Update the images to point to the new commit SHA
           kustomize edit set image ghcr.io/${{ env.REPO }}-db=ghcr.io/${{ env.REPO }}-db:sha-${{ github.sha }}
           kustomize edit set image ghcr.io/${{ env.REPO }}-frontend=ghcr.io/${{ env.REPO }}-frontend:sha-${{ github.sha }}
+          kustomize edit set image ghcr.io/${{ env.REPO }}-backend=ghcr.io/${{ env.REPO }}-backend:sha-${{ github.sha }}
           
       - name: Commit and push K8s manifest changes (GitOps)
         if: github.event_name != 'pull_request'

@@ -1,13 +1,13 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api',
+  baseURL: '/api',
   timeout: 10000
 })
 
 // 上传文件用单独的 axios 实例（上传可能耗时更长）
 const uploadClient = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: '/api',
   timeout: 30000
 })
 
