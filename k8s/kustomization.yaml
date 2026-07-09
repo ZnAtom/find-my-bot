@@ -2,12 +2,18 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - db.yaml
-  - frontend.yaml
+- db.yaml
+- frontend.yaml
 
 # These image tags will be replaced dynamically by the CI/CD pipeline
 images:
-  - name: ghcr.io/znatom/findmybot-db
-    newTag: latest
-  - name: ghcr.io/znatom/findmybot-frontend
-    newTag: latest
+- name: ghcr.io/ZnAtom/find-my-bot-db
+  newName: ghcr.io/ZnAtom/find-my-bot-db
+  newTag: sha-1a4631f8c5d3fe36df5871e29c35b1946b24e665
+- name: ghcr.io/ZnAtom/find-my-bot-frontend
+  newName: ghcr.io/ZnAtom/find-my-bot-frontend
+  newTag: sha-1a4631f8c5d3fe36df5871e29c35b1946b24e665
+- name: ghcr.io/znatom/findmybot-db
+  newTag: latest
+- name: ghcr.io/znatom/findmybot-frontend
+  newTag: latest
