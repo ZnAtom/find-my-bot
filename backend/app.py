@@ -1,4 +1,3 @@
-import uuid
 from fastapi import FastAPI, HTTPException, Query, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,6 +7,7 @@ import psycopg2
 import psycopg2.extras
 import os
 import uuid
+from urllib.parse import unquote, urlparse
 from embedding import encode_text, encode_image, init_model
 
 app = FastAPI(title="校园失物招领 API", version="1.0.0")
@@ -96,17 +96,76 @@ def _vector_str(values: list[float]) -> str:
     return "[" + ",".join(str(v) for v in trimmed) + "]"
 
 
+def _normalize_vector(values: list[float]) -> list[float]:
+    norm = sum(v * v for v in values) ** 0.5
+    if norm == 0:
+        return values
+    return [v / norm for v in values]
+
+
+def _average_vectors(vectors: list[list[float]]) -> list[float]:
+    min_dim = min(len(v) for v in vectors)
+    averaged = [
+        sum(vector[i] for vector in vectors) / len(vectors)
+        for i in range(min_dim)
+    ]
+    return _normalize_vector(averaged)
+
+
+def _image_url_to_path(url: str) -> Optional[str]:
+    if not url:
+        return None
+
+    parsed = urlparse(url.strip())
+    path = unquote(parsed.path if parsed.scheme else url.strip())
+
+    if path.startswith("/uploads/"):
+        candidate = os.path.join(UPLOAD_DIR, path.removeprefix("/uploads/"))
+    elif path.startswith("uploads/"):
+        candidate = os.path.join(UPLOAD_DIR, path.removeprefix("uploads/"))
+    elif os.path.isabs(path):
+        candidate = path
+    else:
+        candidate = os.path.join(UPLOAD_DIR, path)
+
+    candidate = os.path.abspath(candidate)
+    upload_root = os.path.abspath(UPLOAD_DIR)
+    if not candidate.startswith(upload_root + os.sep):
+        return None
+    return candidate if os.path.isfile(candidate) else None
+
+
+def _iter_image_paths(image_url: Optional[str]) -> list[str]:
+    if not image_url:
+        return []
+    paths = []
+    for raw_url in image_url.split(","):
+        path = _image_url_to_path(raw_url)
+        if path:
+            paths.append(path)
+    return paths
+
+
 def _build_vector(item_name: str, description: Optional[str] = None, image_url: Optional[str] = None) -> Optional[str]:
     text_parts = [item_name]
     if description:
         text_parts.append(description)
     text = " ".join(text_parts)
+    vectors = []
+
     try:
-        if image_url and os.path.isfile(image_url):
-            vec = encode_image(image_url)
-        else:
-            vec = encode_text(text)
-        return _vector_str(vec)
+        if text.strip():
+            vectors.append(encode_text(text))
+
+        for image_path in _iter_image_paths(image_url):
+            try:
+                vectors.append(encode_image(image_path))
+            except Exception:
+                continue
+
+        if not vectors:
+            return None
+        return _vector_str(_average_vectors(vectors))
     except Exception:
         return None
 

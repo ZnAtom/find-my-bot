@@ -11,7 +11,7 @@ import os
 app = FastAPI()
 
 SCHOOL_API_URL = os.environ.get("SCHOOL_API_URL", "https://genaiapi.shanghaitech.edu.cn/api/v1/start")
-SCHOOL_API_KEY = os.environ.get("SCHOOL_API_KEY", "43d927e51d264219bdf5063f43c5740c")
+SCHOOL_API_KEY = os.environ.get("SCHOOL_API_KEY")
 SCHOOL_MODEL = os.environ.get("SCHOOL_MODEL", "qwen-instruct")
 
 
@@ -33,6 +33,9 @@ def sanitize_body(body: dict) -> dict:
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
+    if not SCHOOL_API_KEY:
+        raise HTTPException(status_code=500, detail="缺少 SCHOOL_API_KEY 环境变量，无法调用学校 GenAI API")
+
     body = await request.json()
     stream = body.get("stream", False)
 

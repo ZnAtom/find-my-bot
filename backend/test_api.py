@@ -5,11 +5,12 @@
 import asyncio
 import httpx
 import json
+import os
 
 # 学校 API 配置（与 agent.py 保持一致）
-SCHOOL_API_URL = "https://genaiapi.shanghaitech.edu.cn/api/v1/start"
-SCHOOL_API_KEY = "43d927e51d264219bdf5063f43c5740c"
-SCHOOL_MODEL = "qwen-instruct"
+SCHOOL_API_URL = os.environ.get("SCHOOL_API_URL", "https://genaiapi.shanghaitech.edu.cn/api/v1/start")
+SCHOOL_API_KEY = os.environ.get("SCHOOL_API_KEY")
+SCHOOL_MODEL = os.environ.get("SCHOOL_MODEL", "qwen-instruct")
 
 
 async def test_simple_chat():
@@ -264,6 +265,10 @@ async def main():
     """运行所有测试"""
     print("学校 GenAI API 测试脚本")
     print("=" * 60)
+
+    if not SCHOOL_API_KEY:
+        print("缺少 SCHOOL_API_KEY 环境变量，跳过需要学校 GenAI API 的测试。")
+        return
     
     results = []
     
