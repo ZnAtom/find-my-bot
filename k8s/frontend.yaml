@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/znatom/findmybot-frontend:latest
+          image: ghcr.io/znatom/find-my-bot-frontend:latest
           ports:
             - containerPort: 5173
               name: http

@@ -13,7 +13,7 @@ images:
 - name: ghcr.io/ZnAtom/find-my-bot-frontend
   newName: ghcr.io/ZnAtom/find-my-bot-frontend
   newTag: sha-1a4631f8c5d3fe36df5871e29c35b1946b24e665
-- name: ghcr.io/znatom/findmybot-db
+- name: ghcr.io/znatom/find-my-bot-db
   newTag: latest
-- name: ghcr.io/znatom/findmybot-frontend
+- name: ghcr.io/znatom/find-my-bot-frontend
   newTag: latest

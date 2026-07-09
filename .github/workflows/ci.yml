@@ -13,8 +13,6 @@ on:
 env:
   REGISTRY: ghcr.io
   GITHUB_ACTOR: ${{ github.actor }}
-  DB_IMAGE_NAME: ${{ github.repository }}-db
-  FRONTEND_IMAGE_NAME: ${{ github.repository }}-frontend
 
 jobs:
   build-and-push:
@@ -26,6 +24,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        
+      - name: Downcase REPO
+        run: |
+          echo "REPO=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -38,7 +40,7 @@ jobs:
         id: meta-db
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.DB_IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.REPO }}-db
           tags: |
             type=sha,format=long
 
@@ -54,7 +56,7 @@ jobs:
         id: meta-frontend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.REPO }}-frontend
           tags: |
             type=sha,format=long
 
@@ -75,8 +77,8 @@ jobs:
         run: |
           cd k8s
           # Update the images to point to the new commit SHA
-          kustomize edit set image ghcr.io/${{ env.DB_IMAGE_NAME }}=ghcr.io/${{ env.DB_IMAGE_NAME }}:sha-${{ github.sha }}
-          kustomize edit set image ghcr.io/${{ env.FRONTEND_IMAGE_NAME }}=ghcr.io/${{ env.FRONTEND_IMAGE_NAME }}:sha-${{ github.sha }}
+          kustomize edit set image ghcr.io/${{ env.REPO }}-db=ghcr.io/${{ env.REPO }}-db:sha-${{ github.sha }}
+          kustomize edit set image ghcr.io/${{ env.REPO }}-frontend=ghcr.io/${{ env.REPO }}-frontend:sha-${{ github.sha }}
           
       - name: Commit and push K8s manifest changes (GitOps)
         if: github.event_name != 'pull_request'
