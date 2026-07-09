@@ -20,7 +20,14 @@ spec:
           env:
             - name: DATABASE_URL
               value: "postgresql://appuser:password@foundit-db:5432/lostfound"
-            # Add other env vars here if needed
+            - name: DB_USER
+              value: "appuser"
+            - name: DB_PASSWORD
+              value: "password"
+            - name: DB_NAME
+              value: "lostfound"
+            - name: DB_HOST
+              value: "foundit-db"
           ports:
             - containerPort: 8000
               name: http
