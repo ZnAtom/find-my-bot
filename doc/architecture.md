@@ -70,6 +70,20 @@
    c. 启动 uvicorn app:app --reload
 ```
 
+### Kubernetes (GitOps) 模式
+
+```
+1. 开发者 git push 推送代码至 GitHub
+2. GitHub Actions 构建三个容器镜像 (db, backend, frontend) 推送至 ghcr.io
+3. GitHub Actions 更新 k8s/kustomization.yaml 中的镜像 tag，并自动提交
+4. ArgoCD 监听 Git 仓库变更，同步资源至 K8s 集群
+5. K8s 创建新 Pod (Frontend, Backend, DB)
+6. Backend Pod 启动：
+   a. 等待 DB 连接就绪并执行 schema 建表
+   b. 等待 Qwen 模型下载完毕 (HF_ENDPOINT 加速)
+   c. 就绪探针 (readinessProbe) 检查 /docs 成功后，Nginx Ingress 放行流量
+```
+
 ### 本地开发模式
 
 ```bash
