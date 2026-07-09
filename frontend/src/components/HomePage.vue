@@ -120,7 +120,7 @@ const loadStats = async () => {
 const loadLatestItems = async () => {
   loading.value = true
   try {
-    const res = await lostItemsApi.getAll({ page: 1, page_size: 4 })
+    const res = await lostItemsApi.getAll({ page: 1, page_size: 4, status: 'lost' })
     latestItems.value = res.data.items || []
   } catch (e) {
     console.error('加载最新失物失败', e)

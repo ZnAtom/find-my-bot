@@ -91,7 +91,7 @@ import { lostItemsApi, resolveImageUrl } from '../api'
 
 const searchQuery = ref('')
 const filterType = ref('')
-const filterStatus = ref('')
+const filterStatus = ref('lost')
 const searchMode = ref('keyword')
 const items = ref([])
 const page = ref(1)
