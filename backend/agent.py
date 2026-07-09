@@ -10,10 +10,10 @@ from embedding import encode_text, encode_image
 import psycopg2
 import psycopg2.extras
 
-# 学校 API 配置（硬编码）
-SCHOOL_API_URL = "https://genaiapi.shanghaitech.edu.cn/api/v1/start"
-SCHOOL_API_KEY = "43d927e51d264219bdf5063f43c5740c"
-SCHOOL_MODEL = "qwen-instruct"
+# 学校 API 配置
+SCHOOL_API_URL = os.environ.get("SCHOOL_API_URL", "https://genaiapi.shanghaitech.edu.cn/api/v1/start")
+SCHOOL_API_KEY = os.environ.get("SCHOOL_API_KEY")
+SCHOOL_MODEL = os.environ.get("SCHOOL_MODEL", "qwen-instruct")
 
 # 数据库配置
 DB_CONFIG = {
@@ -333,6 +333,9 @@ async def call_llm(messages: List[Dict[str, Any]]) -> str:
     :param messages: 消息列表
     :return: 模型回复内容
     """
+    if not SCHOOL_API_KEY:
+        raise RuntimeError("缺少 SCHOOL_API_KEY 环境变量，无法调用学校 GenAI API")
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {SCHOOL_API_KEY}",
