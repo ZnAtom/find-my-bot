@@ -8,6 +8,8 @@ resources:
 # These image tags will be replaced dynamically by the CI/CD pipeline
 images:
 - name: ghcr.io/znatom/find-my-bot-db
-  newTag: latest
+  newName: ghcr.io/znatom/find-my-bot-db
+  newTag: sha-6e1afecfd5bdfde8e58dfd31fd336ae77eb2cc52
 - name: ghcr.io/znatom/find-my-bot-frontend
-  newTag: latest
+  newName: ghcr.io/znatom/find-my-bot-frontend
+  newTag: sha-6e1afecfd5bdfde8e58dfd31fd336ae77eb2cc52
