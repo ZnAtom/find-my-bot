@@ -1,3 +1,6 @@
+# 用户上传文件
+backend/uploads/
+
 # Python
 __pycache__/
 *.py[cod]
