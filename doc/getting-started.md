@@ -191,3 +191,39 @@ HF_ENDPOINT=https://hf-mirror.com python -m uvicorn app:app ...
 ```
 
 模型下载完成后，后续可用 `HF_LOCAL_ONLY=1` 跳过网络请求直接加载本地缓存。
+
+## 13. K8s 部署与常见排错 (Kubernetes / GitOps)
+
+如果您正在使用 ArgoCD 或 Kubernetes 将应用部署到云端集群，请注意以下常见陷阱及解决方案：
+
+### 13.1. Nginx 返回 502 Bad Gateway
+**原因**：后端容器在启动时需要下载大语言模型（如 Qwen3 2B，约 2GB），下载过程可能会持续数分钟。如果 K8s 没配置就绪探针（readinessProbe），Nginx Ingress 会在模型下载期间就将用户请求转发过去，由于 FastAPI 还没监听端口，所以直接返回 502。
+**解决**：在后端的 `Deployment` 配置文件中配置 `readinessProbe`，例如：
+```yaml
+readinessProbe:
+  httpGet:
+    path: /docs
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+```
+
+### 13.2. 部署到云端后，打开前端页面报 403 Forbidden
+**原因**：Vite 5 默认具有严格的 Host 头校验。如果您通过自己的域名（而不是 localhost）访问 Vite 开发服务器（`npm run dev`），Vite 会为了防御 DNS 重绑定攻击直接拦截请求。
+**解决**：在前端的 `vite.config.js` 中配置 `server: { allowedHosts: true }`，或者将您的正式域名加入 allowedHosts 列表。
+
+### 13.3. 后端 Pod 不断重启 (CrashLoopBackOff)
+**原因**：如果您使用的是海外的模型源（如 HuggingFace），在国内 K8s 节点上极大概率会触发 `Connection reset by peer` 错误，导致容器崩溃并无限重启。或者 `DB_PASSWORD` 等关键连接环境变量缺失。
+**解决**：
+1. 检查环境变量中是否带全了所有数据库信息（`DB_USER`、`DB_PASSWORD`、`DB_HOST`、`DB_NAME`）。
+2. 在后端的 Kubernetes 环境变量 (env) 中强制注入国内镜像：
+```yaml
+- name: HF_ENDPOINT
+  value: "https://hf-mirror.com"
+```
+
+### 13.4. Ingress HTTPS 证书报错 (ERR_SSL_PROTOCOL_ERROR)
+**原因**：通常是因为集群外部还有一层代理服务器（例如校园网的 Caddy/FRP 网关）。如果在您的 DNS 解析链路中，外部网关尝试接管 HTTPS 但又没有配置对应的证书，就会导致握手失败。
+**解决**：
+- 确保 CNAME 解析到了正确的入口 IP。如果是校园网，可以尝试直连 K8s 节点的内部域名。
+- 如果需要 K8s 自己签发证书，可以在 Ingress 的 annotations 中加上 `cert-manager.io/cluster-issuer: letsencrypt-prod-dns` 来使用 Cert-Manager 的 DNS 验证自动下发证书。
