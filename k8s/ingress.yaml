@@ -1,14 +1,14 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: findmybot-ingress
+  name: foundit-ingress
   annotations:
     kubernetes.io/ingress.class: "nginx"
     # Adjust proxy body size if you have large file uploads
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
 spec:
   rules:
-    - host: findmybot.geekpie.club # Replace with your actual domain later
+    - host: foundit.geekpie.club # Replace with your actual domain later
       http:
         paths:
           # Route /api to backend
@@ -16,7 +16,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: findmybot-backend
+                name: foundit-backend
                 port:
                   number: 8000
           # Route everything else to frontend
@@ -24,6 +24,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: findmybot-frontend
+                name: foundit-frontend
                 port:
                   number: 5173

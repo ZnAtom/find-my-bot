@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: findmybot-frontend
+  name: foundit-frontend
   labels:
-    app: findmybot-frontend
+    app: foundit-frontend
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: findmybot-frontend
+      app: foundit-frontend
   template:
     metadata:
       labels:
-        app: findmybot-frontend
+        app: foundit-frontend
     spec:
       containers:
         - name: frontend
@@ -24,9 +24,9 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: findmybot-frontend
+  name: foundit-frontend
   labels:
-    app: findmybot-frontend
+    app: foundit-frontend
 spec:
   type: NodePort # Use NodePort to easily access it on local K8s
   ports:
@@ -34,4 +34,4 @@ spec:
       targetPort: http
       nodePort: 30173 # Fixed nodePort for easy access
   selector:
-    app: findmybot-frontend
+    app: foundit-frontend

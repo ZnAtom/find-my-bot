@@ -1,25 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: findmybot-backend
+  name: foundit-backend
   labels:
-    app: findmybot-backend
+    app: foundit-backend
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: findmybot-backend
+      app: foundit-backend
   template:
     metadata:
       labels:
-        app: findmybot-backend
+        app: foundit-backend
     spec:
       containers:
         - name: backend
           image: ghcr.io/znatom/find-my-bot-backend:latest
           env:
             - name: DATABASE_URL
-              value: "postgresql://appuser:password@findmybot-db:5432/lostfound"
+              value: "postgresql://appuser:password@foundit-db:5432/lostfound"
             # Add other env vars here if needed
           ports:
             - containerPort: 8000
@@ -34,12 +34,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: findmybot-backend
+  name: foundit-backend
   labels:
-    app: findmybot-backend
+    app: foundit-backend
 spec:
   ports:
     - port: 8000
       targetPort: http
   selector:
-    app: findmybot-backend
+    app: foundit-backend
