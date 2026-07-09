@@ -6,7 +6,7 @@ from sentence_transformers import SentenceTransformer
 os.environ.setdefault("HF_ENDPOINT", os.environ.get("HF_ENDPOINT", "https://huggingface.co"))
 
 _model = None
-VECTOR_DIM = 2048
+VECTOR_DIM = 1536
 
 
 def init_model():
