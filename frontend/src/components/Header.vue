@@ -34,7 +34,11 @@
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item disabled>{{ auth.viewLabel }}</el-dropdown-item>
+                <el-dropdown-item @click="navigate('profile')">
+                  <el-icon><User /></el-icon>
+                  个人中心
+                </el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin" disabled>{{ auth.viewLabel }}</el-dropdown-item>
                 <el-dropdown-item v-if="auth.isAdmin" @click="auth.toggleView()">
                   <el-icon><Switch /></el-icon>
                   切换到{{ auth.isAdminView ? '普通用户预览' : '管理员视角' }}
@@ -104,6 +108,7 @@ const drawerVisible = ref(false)
 const navItems = computed(() => [
   { key: 'home', label: '首页', icon: HomeFilled },
   { key: 'lost', label: '发现', icon: Document },
+  ...(auth.isLoggedIn ? [{ key: 'profile', label: '个人中心', icon: User }] : []),
   ...(auth.isAdminView ? [{ key: 'admin', label: '管理后台', icon: Setting }] : []),
 ])
 

@@ -198,6 +198,13 @@ def auth_logout(request: Request):
     return response
 
 
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    qq: Optional[str] = None
+    email: Optional[str] = None
+
+
 DB_CONFIG = {
     "dbname": os.environ.get("DB_NAME", "lostfound"),
     "user": os.environ.get("DB_USER", "appuser"),
@@ -280,7 +287,10 @@ def _build_vector(item_name: str, location: Optional[str] = None, lost_time: Opt
 
 
 def get_db_connection():
-    return psycopg2.connect(**DB_CONFIG)
+    try:
+        return psycopg2.connect(**DB_CONFIG)
+    except psycopg2.OperationalError:
+        raise HTTPException(status_code=503, detail="数据库连接失败，请检查 DB_HOST/DB_PORT 和 PostgreSQL 服务")
 
 
 def serialize_row(row):
@@ -307,6 +317,12 @@ class UserCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     role: Optional[str] = None
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    qq: Optional[str] = None
+    email: Optional[str] = None
+
+class UserProfileUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
     qq: Optional[str] = None
@@ -360,6 +376,92 @@ class LostItemResponse(BaseModel):
     user_id: Optional[int] = None
     created_at: str
     updated_at: str
+
+@app.get("/api/me", response_model=UserResponse)
+def get_me(request: Request):
+    return get_current_user(request)
+
+@app.put("/api/me", response_model=UserResponse)
+def update_me(update: UserProfileUpdate, request: Request):
+    current_user = get_current_user(request)
+    verify_csrf_origin(request)
+
+    update_fields = []
+    params = []
+    if update.name is not None:
+        nickname = update.name.strip()
+        if not nickname:
+            raise HTTPException(status_code=400, detail="昵称不能为空")
+        update_fields.append("name = %s")
+        params.append(nickname)
+    if update.phone is not None:
+        update_fields.append("phone = %s")
+        params.append(none_if_empty(update.phone))
+    if update.qq is not None:
+        update_fields.append("qq = %s")
+        params.append(none_if_empty(update.qq))
+    if update.email is not None:
+        update_fields.append("email = %s")
+        params.append(none_if_empty(update.email))
+
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="没有要更新的字段")
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    try:
+        params.append(current_user["id"])
+        query = "UPDATE users SET " + ", ".join(update_fields) + " WHERE id = %s RETURNING *"
+        cur.execute(query, params)
+        conn.commit()
+        return serialize_row(cur.fetchone())
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=f"更新个人资料失败: {e}")
+    finally:
+        cur.close()
+        conn.close()
+
+@app.get("/api/me/items")
+def get_my_lost_items(
+    request: Request,
+    status: Optional[str] = None,
+    item_type: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20
+):
+    current_user = get_current_user(request)
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    where_clause = "WHERE user_id = %s"
+    params = [current_user["id"]]
+
+    if status:
+        where_clause += " AND status = %s"
+        params.append(status)
+    if item_type:
+        where_clause += " AND item_type = %s"
+        params.append(item_type)
+
+    cur.execute(f"SELECT COUNT(*) as total FROM lost_items {where_clause}", params)
+    total = cur.fetchone()['total']
+
+    query_params = params + [page_size, (page - 1) * page_size]
+    cur.execute(
+        f"SELECT * FROM lost_items {where_clause} ORDER BY created_at DESC LIMIT %s OFFSET %s",
+        query_params
+    )
+    items = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return {
+        "items": [serialize_row(item) for item in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size
+    }
 
 @app.get("/api/users", response_model=List[UserResponse])
 def get_users(request: Request):

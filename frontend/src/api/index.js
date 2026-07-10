@@ -45,6 +45,13 @@ export const authApi = {
   loginUrl: (next = '/') => `${apiBase}/api/auth/login?next=${encodeURIComponent(next)}`,
   me: () => api.get('/auth/me'),
   logout: () => api.post('/auth/logout'),
+  updateProfile: (data) => api.put('/auth/profile', data),
+}
+
+export const meApi = {
+  get: () => api.get('/me'),
+  update: (data) => api.put('/me', data),
+  items: (params) => api.get('/me/items', { params }),
 }
 
 export const uploadApi = {
