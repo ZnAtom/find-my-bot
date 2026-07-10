@@ -1,34 +1,33 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
 :root {
-  /* Color Palette - Premium Vibrant */
-  --bg-primary: #f8fafc;
-  --bg-secondary: #f1f5f9;
-  --brand-primary: #7c3aed; /* Vibrant Purple */
-  --brand-secondary: #3b82f6; /* Vibrant Blue */
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --border-color: rgba(226, 232, 240, 0.6);
+  /* Color Palette - Clean Minimalism */
+  --bg-primary: #fdfdfd;
+  --bg-secondary: #f3f4f6;
+  --brand-primary: #2563eb; /* Classic crisp blue */
+  --brand-secondary: #0f172a;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --border-color: #e5e7eb;
   
   /* Status Colors */
-  --success-color: #10b981;
-  --warning-color: #f59e0b;
-  --danger-color: #ef4444;
+  --success-color: #059669;
+  --warning-color: #d97706;
+  --danger-color: #dc2626;
   
-  /* Advanced Glassmorphism */
-  --glass-bg: rgba(255, 255, 255, 0.65);
-  --glass-border: rgba(255, 255, 255, 0.8);
-  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
-  --glass-hover-bg: rgba(255, 255, 255, 0.85);
+  /* Clean Card Style (Replaces Glassmorphism) */
+  --card-bg: #ffffff;
+  --card-border: #f3f4f6;
+  --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --card-hover-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
   
   /* Typography */
   --font-family: 'Inter', system-ui, -apple-system, sans-serif;
   
   /* Layout & Animation */
-  --header-height: 70px;
-  --border-radius-lg: 20px;
-  --border-radius-md: 14px;
-  --spring-easing: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --header-height: 64px;
+  --border-radius-lg: 12px;
+  --border-radius-md: 8px;
 }
 
 * {
@@ -40,10 +39,9 @@
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
   font-family: var(--font-family);
   color: var(--text-primary);
-  background-color: transparent; /* Changed to transparent since App.vue handles bg */
+  background-color: var(--bg-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -57,47 +55,38 @@ body {
 
 /* Global Transitions */
 a, button {
-  transition: all 0.3s ease;
+  transition: all 0.2s ease-in-out;
 }
 
-/* Element Plus Overrides */
+/* Element Plus Overrides - Clean Look */
 :root {
   --el-color-primary: var(--brand-primary) !important;
   --el-color-success: var(--success-color) !important;
   --el-color-warning: var(--warning-color) !important;
   --el-color-danger: var(--danger-color) !important;
-  --el-border-radius-base: 12px !important; /* more rounded elements */
+  --el-border-radius-base: 6px !important; /* Cleaner, tighter radius */
 }
 
 .el-button {
-  transition: all 0.3s var(--spring-easing) !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease-in-out !important;
 }
 
 .el-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
+  transform: none; /* No jumping buttons */
+  opacity: 0.9;
 }
 
-.el-button--primary {
-  --el-button-bg-color: var(--brand-primary) !important;
-  --el-button-border-color: var(--brand-primary) !important;
-  --el-button-hover-bg-color: #8b5cf6 !important;
-  --el-button-hover-border-color: #8b5cf6 !important;
-}
-
-/* Glass Card Utility */
+/* Clean Card Utility */
 .glass-card {
-  background: var(--glass-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
   border-radius: var(--border-radius-lg);
-  transition: all 0.4s var(--spring-easing);
+  transition: box-shadow 0.2s ease-in-out;
 }
 
 .glass-card:hover {
-  background: var(--glass-hover-bg);
-  transform: translateY(-4px);
-  box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.1);
+  box-shadow: var(--card-hover-shadow);
+  transform: none; /* No jumping cards */
 }

@@ -382,13 +382,13 @@ const formatDate = (dateStr) => {
 
 /* 卡片样式 (复用现代卡片) */
 .modern-card {
-  background: var(--surface-color);
+  background: var(--card-bg);
   border-radius: var(--border-radius-lg);
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.03);
-  border: 1px solid var(--border-color);
+  transition: all 0.2s ease-in-out;
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--card-border);
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -396,9 +396,8 @@ const formatDate = (dateStr) => {
 }
 
 .modern-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 16px 32px rgba(0,0,0,0.08);
-  border-color: transparent;
+  box-shadow: var(--card-hover-shadow);
+  border-color: #d1d5db;
 }
 
 .card-image-wrapper {
@@ -412,11 +411,6 @@ const formatDate = (dateStr) => {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.5s ease;
-}
-
-.modern-card:hover .card-img {
-  transform: scale(1.05);
 }
 
 .card-img-placeholder {

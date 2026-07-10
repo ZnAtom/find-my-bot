@@ -132,16 +132,10 @@ const logout = async () => {
   z-index: 100;
   padding: 0 20px;
   height: var(--header-height);
-  border-radius: 0;
-  border-left: none;
-  border-right: none;
-  border-top: none;
-  background: var(--glass-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: var(--card-bg);
   border-bottom: 1px solid var(--border-color);
-  box-shadow: 0 4px 30px rgba(0,0,0,0.02);
-  transition: all 0.3s ease;
+  box-shadow: var(--card-shadow);
+  transition: all 0.2s ease;
 }
 
 .header-content {
@@ -159,19 +153,17 @@ const logout = async () => {
   gap: 12px;
   cursor: pointer;
   flex-shrink: 0;
-  transition: transform 0.3s ease;
+  transition: opacity 0.2s ease;
 }
 
 .logo:hover {
-  transform: scale(1.02);
+  opacity: 0.8;
 }
 
 .logo-text {
-  font-size: 22px;
-  font-weight: 800;
-  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--brand-primary);
   letter-spacing: -0.5px;
 }
 
@@ -195,7 +187,7 @@ const logout = async () => {
   font-weight: 500;
   color: var(--text-secondary);
   border-bottom: 2px solid transparent;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   height: var(--header-height);
   line-height: var(--header-height);
 }
@@ -226,13 +218,6 @@ const logout = async () => {
 
 .publish-btn {
   font-weight: 600;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.publish-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
 }
 
 /* 手机菜单按钮 */
