@@ -10,11 +10,11 @@ resources:
 # These image tags will be replaced dynamically by the CI/CD pipeline
 images:
 - name: ghcr.io/znatom/find-my-bot-backend
-  newName: ghcr.io/znatom/find-my-bot-backend
+  newName: ghcr.nju.edu.cn/znatom/find-my-bot-backend
   newTag: sha-a881c5cfe5fe1ccd1cb46d06c1d4f18b55dac57d
 - name: ghcr.io/znatom/find-my-bot-db
-  newName: ghcr.io/znatom/find-my-bot-db
+  newName: ghcr.nju.edu.cn/znatom/find-my-bot-db
   newTag: sha-9fedaddd0e98919f23a3fece82f21e7e21ad09db
 - name: ghcr.io/znatom/find-my-bot-frontend
-  newName: ghcr.io/znatom/find-my-bot-frontend
+  newName: ghcr.nju.edu.cn/znatom/find-my-bot-frontend
   newTag: sha-a881c5cfe5fe1ccd1cb46d06c1d4f18b55dac57d
