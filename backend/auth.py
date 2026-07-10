@@ -168,13 +168,14 @@ def get_or_create_user(userinfo: dict) -> dict:
         cur.execute("SELECT * FROM users WHERE casdoor_sub = %s", (casdoor_sub,))
         row = cur.fetchone()
         if row:
-            # 已存在用户：只更新 Casdoor 原始名，保留用户自己编辑的昵称和邮箱
+            # 已存在用户：更新 Casdoor 原始名，并获取/更新邮箱
+            new_email = email if email else row["email"]
             cur.execute(
                 """UPDATE users
-                   SET casdoor_name = %s
+                   SET casdoor_name = %s, email = %s
                    WHERE id = %s
                    RETURNING *""",
-                (userinfo.get("name"), row["id"]),
+                (userinfo.get("name"), new_email, row["id"]),
             )
             conn.commit()
             return _serialize_user(cur.fetchone())
@@ -182,14 +183,16 @@ def get_or_create_user(userinfo: dict) -> dict:
         cur.execute("SELECT * FROM users WHERE student_id = %s", (student_id,))
         row = cur.fetchone()
         if row:
-            # 链接 Casdoor 账号到已有本地用户，不覆盖昵称和邮箱
+            # 链接 Casdoor 账号到已有本地用户，并获取/更新邮箱
+            new_email = email if email else row["email"]
             cur.execute(
                 """UPDATE users
                    SET casdoor_sub = %s,
-                       casdoor_name = %s
+                       casdoor_name = %s,
+                       email = %s
                    WHERE id = %s
                    RETURNING *""",
-                (casdoor_sub, userinfo.get("name"), row["id"]),
+                (casdoor_sub, userinfo.get("name"), new_email, row["id"]),
             )
             conn.commit()
             return _serialize_user(cur.fetchone())

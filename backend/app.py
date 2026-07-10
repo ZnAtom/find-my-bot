@@ -58,7 +58,12 @@ async def periodic_email_matcher():
             cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
             
             # Simple logic: check pending items against their opposite pool
-            cur.execute("SELECT id, item_type, contact_person, email FROM lost_items WHERE status = 'pending'")
+            cur.execute("""
+                SELECT l.id, l.item_type, l.contact_person, u.email 
+                FROM lost_items l 
+                LEFT JOIN users u ON l.user_id = u.id 
+                WHERE l.status = 'pending'
+            """)
             items = cur.fetchall()
             for item in items:
                 # Find opposite items
