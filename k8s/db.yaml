@@ -2,6 +2,8 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: foundit-db-pvc
+  annotations:
+    "helm.sh/resource-policy": keep
   labels:
     app: foundit-db
 spec:

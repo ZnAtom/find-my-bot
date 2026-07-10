@@ -1,3 +1,33 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: foundit-uploads-pvc
+  annotations:
+    "helm.sh/resource-policy": keep
+  labels:
+    app: foundit-backend
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: foundit-model-cache-pvc
+  annotations:
+    "helm.sh/resource-policy": keep
+  labels:
+    app: foundit-backend
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,6 +60,8 @@ spec:
               value: "foundit-db"
             - name: HF_ENDPOINT
               value: "https://hf-mirror.com"
+            - name: HF_HOME
+              value: "/root/.cache/huggingface"
           ports:
             - containerPort: 8000
               name: http
@@ -44,9 +76,15 @@ spec:
           volumeMounts:
             - mountPath: /app/uploads
               name: uploads
+            - mountPath: /root/.cache/huggingface
+              name: model-cache
       volumes:
         - name: uploads
-          emptyDir: {} # Ephemeral for now, use PVC if persistent uploads are needed
+          persistentVolumeClaim:
+            claimName: foundit-uploads-pvc
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: foundit-model-cache-pvc
 ---
 apiVersion: v1
 kind: Service
