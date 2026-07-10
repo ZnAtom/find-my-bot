@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
@@ -8,18 +9,37 @@ import psycopg2.extras
 import os
 import uuid
 from urllib.parse import unquote, urlparse
-from embedding import encode_text, encode_image, init_model
+from auth import (
+    COOKIE_SECURE,
+    NEXT_COOKIE,
+    SESSION_COOKIE,
+    STATE_COOKIE,
+    assert_owner_or_admin,
+    create_session_token,
+    exchange_code_for_token,
+    get_casdoor_userinfo,
+    get_current_user,
+    get_or_create_user,
+    make_login_url,
+    new_state,
+    require_admin,
+    safe_frontend_redirect,
+    verify_csrf_origin,
+)
+from embedding import encode_text, encode_image
 
 app = FastAPI(title="校园失物招领 API", version="1.0.0")
 
 
-@app.on_event("startup")
-def startup():
-    init_model()
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
+    if origin.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,8 +58,11 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 @app.post("/api/upload")
-async def upload_image(file: UploadFile = File(...), request: Request = None):
+async def upload_image(request: Request, file: UploadFile = File(...)):
     """上传图片，返回可访问的 URL"""
+    get_current_user(request)
+    verify_csrf_origin(request)
+
     # 校验文件扩展名（统一小写）
     original_name = file.filename or "unknown"
     ext = os.path.splitext(original_name)[1].lower()
@@ -77,6 +100,68 @@ async def upload_image(file: UploadFile = File(...), request: Request = None):
     file_url = f"/uploads/{safe_name}"
 
     return {"url": file_url, "filename": safe_name}
+
+
+@app.get("/api/auth/login")
+def auth_login(next: Optional[str] = "/"):
+    state = new_state()
+    response = RedirectResponse(make_login_url(state), status_code=302)
+    response.set_cookie(
+        STATE_COOKIE,
+        state,
+        max_age=600,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="lax",
+    )
+    response.set_cookie(
+        NEXT_COOKIE,
+        next if next and next.startswith("/") and not next.startswith("//") else "/",
+        max_age=600,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="lax",
+    )
+    return response
+
+
+@app.get("/api/auth/callback")
+async def auth_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None):
+    expected_state = request.cookies.get(STATE_COOKIE)
+    if not code or not state or not expected_state or state != expected_state:
+        raise HTTPException(status_code=400, detail="OAuth 回调状态无效")
+
+    token_payload = await exchange_code_for_token(code)
+    userinfo = await get_casdoor_userinfo(token_payload["access_token"])
+    user = get_or_create_user(userinfo)
+    session_token = create_session_token(user["id"])
+
+    redirect_to = safe_frontend_redirect(request.cookies.get(NEXT_COOKIE))
+    response = RedirectResponse(redirect_to, status_code=302)
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_token,
+        max_age=24 * 60 * 60,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="lax",
+    )
+    response.delete_cookie(STATE_COOKIE)
+    response.delete_cookie(NEXT_COOKIE)
+    return response
+
+
+@app.get("/api/auth/me")
+def auth_me(request: Request):
+    return {"user": get_current_user(request)}
+
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request):
+    verify_csrf_origin(request)
+    response = JSONResponse({"message": "已退出登录"})
+    response.delete_cookie(SESSION_COOKIE)
+    return response
 
 
 DB_CONFIG = {
@@ -196,6 +281,13 @@ class UserCreate(BaseModel):
     qq: Optional[str] = None
     email: Optional[str] = None
 
+class UserUpdate(BaseModel):
+    role: Optional[str] = None
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    qq: Optional[str] = None
+    email: Optional[str] = None
+
 class UserResponse(BaseModel):
     id: int
     student_id: str
@@ -205,6 +297,7 @@ class UserResponse(BaseModel):
     email: Optional[str] = None
     role: str
     created_at: str
+    casdoor_name: Optional[str] = None
 
 class LostItemCreate(BaseModel):
     item_name: str
@@ -240,11 +333,13 @@ class LostItemResponse(BaseModel):
     contact_person: str
     contact_phone: Optional[str] = None
     contact_qq: Optional[str] = None
+    user_id: Optional[int] = None
     created_at: str
     updated_at: str
 
 @app.get("/api/users", response_model=List[UserResponse])
-def get_users():
+def get_users(request: Request):
+    require_admin(request)
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute("SELECT * FROM users")
@@ -254,31 +349,16 @@ def get_users():
     return [serialize_row(u) for u in users]
 
 @app.post("/api/users", response_model=UserResponse)
-def create_user(user: UserCreate):
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    try:
-        # 显式获取下一个 ID（序列权限变通方案）
-        cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM users")
-        next_id = cur.fetchone()[0]
-
-        cur.execute(
-            "INSERT INTO users (id, student_id, name, phone, qq, email) VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
-            (next_id, user.student_id, user.name,
-             none_if_empty(user.phone), none_if_empty(user.qq), none_if_empty(user.email))
-        )
-        conn.commit()
-        new_user = cur.fetchone()
-        return serialize_row(new_user)
-    except psycopg2.IntegrityError:
-        conn.rollback()
-        raise HTTPException(status_code=400, detail="学号已存在")
-    finally:
-        cur.close()
-        conn.close()
+def create_user(user: UserCreate, request: Request):
+    require_admin(request)
+    verify_csrf_origin(request)
+    raise HTTPException(status_code=410, detail="用户由 Casdoor 登录自动创建，请不要手动创建本地用户")
 
 @app.get("/api/users/{user_id}", response_model=UserResponse)
-def get_user(user_id: int):
+def get_user(user_id: int, request: Request):
+    current_user = get_current_user(request)
+    if current_user["id"] != user_id and current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="只能查看自己的用户信息")
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
@@ -288,6 +368,59 @@ def get_user(user_id: int):
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
     return serialize_row(user)
+
+@app.put("/api/users/{user_id}", response_model=UserResponse)
+def update_user(user_id: int, update: UserUpdate, request: Request):
+    """管理员更新用户信息（角色/姓名等）"""
+    current_user = require_admin(request)
+    verify_csrf_origin(request)
+    if current_user["id"] == user_id and update.role == "user":
+        raise HTTPException(status_code=400, detail="不能降级当前登录的管理员账号")
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    try:
+        cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        update_fields = []
+        params = []
+        if update.role is not None:
+            if update.role not in ("admin", "user"):
+                raise HTTPException(status_code=400, detail="无效角色，仅支持 admin / user")
+            update_fields.append("role = %s")
+            params.append(update.role)
+        if update.name is not None:
+            update_fields.append("name = %s")
+            params.append(update.name)
+        if update.phone is not None:
+            update_fields.append("phone = %s")
+            params.append(none_if_empty(update.phone))
+        if update.qq is not None:
+            update_fields.append("qq = %s")
+            params.append(none_if_empty(update.qq))
+        if update.email is not None:
+            update_fields.append("email = %s")
+            params.append(none_if_empty(update.email))
+
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="没有要更新的字段")
+
+        params.append(user_id)
+        query = "UPDATE users SET " + ", ".join(update_fields) + " WHERE id = %s RETURNING *"
+        cur.execute(query, params)
+        conn.commit()
+        return serialize_row(cur.fetchone())
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=f"更新用户失败: {e}")
+    finally:
+        cur.close()
+        conn.close()
+
+
 
 @app.get("/api/lost-items")
 def get_lost_items(
@@ -332,7 +465,9 @@ def get_lost_items(
     }
 
 @app.post("/api/lost-items", response_model=LostItemResponse)
-def create_lost_item(item: LostItemCreate):
+def create_lost_item(item: LostItemCreate, request: Request):
+    current_user = get_current_user(request)
+    verify_csrf_origin(request)
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     vector = _build_vector(item.item_name, item.description, item.image_url)
@@ -344,13 +479,14 @@ def create_lost_item(item: LostItemCreate):
         cur.execute(
             """INSERT INTO lost_items
                (id, item_name, item_type, description, location, lost_time, status,
-                image_url, contact_person, contact_phone, contact_qq, vector)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
+                image_url, contact_person, contact_phone, contact_qq, user_id, vector)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
             (next_id, item.item_name, none_if_empty(item.item_type),
              none_if_empty(item.description), none_if_empty(item.location),
              none_if_empty(item.lost_time), none_if_empty(item.status) or 'lost',
              none_if_empty(item.image_url), item.contact_person,
              none_if_empty(item.contact_phone), none_if_empty(item.contact_qq),
+             current_user["id"],
              none_if_empty(vector))
         )
         conn.commit()
@@ -378,7 +514,10 @@ def get_lost_item(item_id: int):
     return serialize_row(item)
 
 @app.put("/api/lost-items/{item_id}", response_model=LostItemResponse)
-def update_lost_item(item_id: int, item: LostItemUpdate):
+def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
+    current_user = get_current_user(request)
+    verify_csrf_origin(request)
+    assert_owner_or_admin(item_id, current_user)
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
@@ -443,7 +582,10 @@ def update_lost_item(item_id: int, item: LostItemUpdate):
         conn.close()
 
 @app.delete("/api/lost-items/{item_id}")
-def delete_lost_item(item_id: int):
+def delete_lost_item(item_id: int, request: Request):
+    current_user = get_current_user(request)
+    verify_csrf_origin(request)
+    assert_owner_or_admin(item_id, current_user)
     conn = get_db_connection()
     cur = conn.cursor()
     try:

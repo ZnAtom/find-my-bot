@@ -1,5 +1,11 @@
 <script setup>
+import { onMounted } from 'vue'
 import Header from './components/Header.vue'
+import auth from './auth'
+
+onMounted(() => {
+  auth.restoreSession()
+})
 </script>
 
 <template>

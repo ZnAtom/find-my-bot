@@ -73,7 +73,8 @@
             <el-form-item label="上传图片 (可选，但推荐)">
               <el-upload
                 class="image-upload"
-                action="/api/upload"
+                :action="uploadAction"
+                :with-credentials="true"
                 :before-upload="beforeUpload"
                 :on-success="handleUploadSuccess"
                 :on-error="handleUploadError"
@@ -127,11 +128,12 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { computed, onMounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Edit, Picture, User, Phone, ChatDotRound, Warning, CircleCheck } from '@element-plus/icons-vue'
-import { lostItemsApi } from '../api'
+import { apiBase, lostItemsApi } from '../api'
+import auth from '../auth'
 
 const router = useRouter()
 const formRef = ref(null)
@@ -139,6 +141,7 @@ const currentStep = ref(0)
 const submitting = ref(false)
 const uploadedUrls = ref([])
 const fileList = ref([])
+const uploadAction = computed(() => `${apiBase}/api/upload`)
 
 const presetLocations = ['图书馆', '教学楼1号楼', '教学楼2号楼', '教学楼3号楼', '食堂', '宿舍区', '体育馆', '学生活动中心', '其他']
 
@@ -163,6 +166,14 @@ const rules = {
   contact_person: [{ required: true, message: '请输入联系人', trigger: 'blur' }],
   contact_phone: [{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' }]
 }
+
+onMounted(() => {
+  if (auth.user) {
+    formData.contact_person = formData.contact_person || auth.user.name || auth.user.student_id || ''
+    formData.contact_phone = formData.contact_phone || auth.user.phone || ''
+    formData.contact_qq = formData.contact_qq || auth.user.qq || ''
+  }
+})
 
 const nextStep = async () => {
   if (!formRef.value) return

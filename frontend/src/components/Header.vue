@@ -15,15 +15,36 @@
           <el-menu-item index="lost" @click="navigate('lost')">
             <el-icon><Document /></el-icon> 发现
           </el-menu-item>
-          <el-menu-item index="admin" @click="navigate('admin')">
+          <el-menu-item v-if="auth.isAdminView" index="admin" @click="navigate('admin')">
             <el-icon><Setting /></el-icon> 管理
           </el-menu-item>
         </el-menu>
         
         <div class="nav-actions">
-          <el-button type="primary" size="large" round class="publish-btn" @click="navigate('create')">
+          <el-button v-if="auth.isLoggedIn" type="primary" size="large" round class="publish-btn" @click="navigate('create')">
             <el-icon><Plus /></el-icon> 发布寻物/招领
           </el-button>
+          <el-button v-else type="primary" size="large" round class="publish-btn" @click="login">
+            <el-icon><User /></el-icon> 登录
+          </el-button>
+          <el-dropdown v-if="auth.isLoggedIn" trigger="click">
+            <el-button text class="user-menu-btn">
+              <el-icon><User /></el-icon>
+              <span>{{ auth.user?.name || auth.user?.student_id || '已登录' }}</span>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item disabled>{{ auth.viewLabel }}</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin" @click="auth.toggleView()">
+                  <el-icon><Switch /></el-icon>
+                  切换到{{ auth.isAdminView ? '普通用户预览' : '管理员视角' }}
+                </el-dropdown-item>
+                <el-dropdown-item divided @click="logout">
+                  <el-icon><SwitchButton /></el-icon> 退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </div>
 
@@ -53,8 +74,14 @@
           <span>{{ item.label }}</span>
         </div>
         <div class="drawer-action">
-           <el-button type="primary" size="large" round class="publish-btn full-width" @click="navigate('create'); drawerVisible = false">
+          <el-button v-if="auth.isLoggedIn" type="primary" size="large" round class="publish-btn full-width" @click="navigate('create'); drawerVisible = false">
             <el-icon><Plus /></el-icon> 发布寻物/招领
+          </el-button>
+          <el-button v-else type="primary" size="large" round class="publish-btn full-width" @click="login(); drawerVisible = false">
+            <el-icon><User /></el-icon> 登录
+          </el-button>
+          <el-button v-if="auth.isLoggedIn" size="large" round class="full-width logout-btn" @click="logout(); drawerVisible = false">
+            <el-icon><SwitchButton /></el-icon> 退出登录
           </el-button>
         </div>
       </div>
@@ -65,7 +92,8 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Search, HomeFilled, Document, Plus, Setting, Menu } from '@element-plus/icons-vue'
+import { Search, HomeFilled, Document, Plus, Setting, Menu, User, SwitchButton, Switch } from '@element-plus/icons-vue'
+import auth from '../auth'
 
 const router = useRouter()
 const route = useRoute()
@@ -73,14 +101,25 @@ const route = useRoute()
 const activeMenu = computed(() => route.name || 'home')
 const drawerVisible = ref(false)
 
-const navItems = [
+const navItems = computed(() => [
   { key: 'home', label: '首页', icon: HomeFilled },
   { key: 'lost', label: '发现', icon: Document },
-  { key: 'admin', label: '管理后台', icon: Setting },
-]
+  ...(auth.isAdminView ? [{ key: 'admin', label: '管理后台', icon: Setting }] : []),
+])
 
 const navigate = (name) => {
   router.push({ name })
+}
+
+const login = () => {
+  auth.loginWithCasdoor(window.location.pathname + window.location.search + window.location.hash)
+}
+
+const logout = async () => {
+  await auth.logout()
+  if (route.meta.requiresAuth) {
+    router.push({ name: 'home' })
+  }
 }
 </script>
 
@@ -170,6 +209,14 @@ const navigate = (name) => {
   gap: 16px;
 }
 
+.user-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
 .publish-btn {
   font-weight: 600;
   box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
@@ -235,6 +282,10 @@ const navigate = (name) => {
 
 .full-width {
   width: 100%;
+}
+
+.logout-btn {
+  margin-top: 12px;
 }
 
 /* ===== 响应式 ===== */
