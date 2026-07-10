@@ -16,5 +16,8 @@ def test_api_lost_items_no_auth(mock_db):
 
 @patch("app.get_db_connection")
 def test_upload_no_auth(mock_db):
-    response = client.post("/api/upload")
+    response = client.post(
+        "/api/upload",
+        files={"file": ("test.jpg", b"dummy content", "image/jpeg")}
+    )
     assert response.status_code == 401
