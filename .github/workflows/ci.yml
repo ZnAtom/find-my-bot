@@ -96,7 +96,6 @@ jobs:
         run: |
           cd k8s
           # Update the images to point to the new commit SHA
-          kustomize edit set image ghcr.io/${{ env.REPO }}-db=ghcr.io/${{ env.REPO }}-db:sha-${{ github.sha }}
           kustomize edit set image ghcr.io/${{ env.REPO }}-frontend=ghcr.io/${{ env.REPO }}-frontend:sha-${{ github.sha }}
           kustomize edit set image ghcr.io/${{ env.REPO }}-backend=ghcr.io/${{ env.REPO }}-backend:sha-${{ github.sha }}
           

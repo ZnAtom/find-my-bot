@@ -12,9 +12,6 @@ images:
 - name: ghcr.io/znatom/find-my-bot-backend
   newName: ghcr.io/znatom/find-my-bot-backend
   newTag: sha-9fedaddd0e98919f23a3fece82f21e7e21ad09db
-- name: ghcr.io/znatom/find-my-bot-db
-  newName: ghcr.io/znatom/find-my-bot-db
-  newTag: sha-9fedaddd0e98919f23a3fece82f21e7e21ad09db
 - name: ghcr.io/znatom/find-my-bot-frontend
   newName: ghcr.io/znatom/find-my-bot-frontend
   newTag: sha-9fedaddd0e98919f23a3fece82f21e7e21ad09db
