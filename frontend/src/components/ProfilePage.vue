@@ -177,12 +177,12 @@
                 <span>当前角色</span>
                 <strong>{{ user?.role === 'admin' ? '管理员' : '普通用户' }}</strong>
               </div>
-              <div v-if="auth.isAdmin" class="account-row">
+              <div v-if="userStore.isAdmin" class="account-row">
                 <span>当前视角</span>
-                <strong>{{ auth.viewLabel }}</strong>
+                <strong>{{ userStore.isAdminView ? '管理员视角' : '普通用户预览' }}</strong>
               </div>
               <div class="account-actions">
-                <el-button v-if="auth.isAdmin" round @click="auth.toggleView()">
+                <el-button v-if="userStore.isAdmin" round @click="userStore.toggleView()">
                   <el-icon><Switch /></el-icon>
                   切换视角
                 </el-button>
@@ -246,8 +246,10 @@ import {
   SwitchButton,
   User,
 } from '@element-plus/icons-vue'
-import auth from '../auth'
+import { useUserStore } from '../stores/user'
 import { lostItemsApi, meApi, resolveImageUrl } from '../api'
+
+const userStore = useUserStore()
 
 const router = useRouter()
 const activeTab = ref('items')
@@ -257,7 +259,7 @@ const savingProfile = ref(false)
 const savingItem = ref(false)
 const editDialogVisible = ref(false)
 const profileFormRef = ref(null)
-const user = computed(() => auth.user)
+const user = computed(() => userStore.user)
 const items = ref([])
 const itemsError = ref('')
 const total = ref(0)
@@ -298,9 +300,9 @@ const completion = computed(() => {
 onMounted(async () => {
   loading.value = true
   try {
-    await auth.restoreSession()
-    if (!auth.isLoggedIn) {
-      auth.loginWithCasdoor('/#/profile')
+    await userStore.fetchUser()
+    if (!userStore.isAuthenticated) {
+      userStore.loginWithCasdoor('/#/profile')
       return
     }
     syncProfileForm()
@@ -329,7 +331,7 @@ const loadItems = async () => {
   } catch (e) {
     console.error('加载我的发布失败', e)
     if (e.response?.status === 401) {
-      auth.loginWithCasdoor('/#/profile')
+      userStore.loginWithCasdoor('/#/profile')
       return
     }
     items.value = []
@@ -354,13 +356,13 @@ const saveProfile = async () => {
       qq: profileForm.qq,
       email: profileForm.email,
     })
-    await auth.restoreSession()
+    await userStore.fetchUser()
     syncProfileForm()
     ElMessage.success('联系方式已保存')
   } catch (e) {
     console.error('保存联系方式失败', e)
     if (e.response?.status === 401) {
-      auth.loginWithCasdoor('/#/profile')
+      userStore.loginWithCasdoor('/#/profile')
       return
     }
     ElMessage.error(profileApiErrorText(e, '保存联系方式失败'))
@@ -475,7 +477,7 @@ const goCreate = () => {
 }
 
 const logout = async () => {
-  await auth.logout()
+  await userStore.logout()
   router.push({ name: 'home' })
 }
 </script>
@@ -529,8 +531,8 @@ const logout = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #e0f2fe, #fce7f3);
-  color: var(--primary-color);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(59, 130, 246, 0.1));
+  color: var(--brand-primary);
   font-size: 30px;
   margin-bottom: 16px;
 }
@@ -569,7 +571,7 @@ const logout = async () => {
 }
 
 .fact-row .el-icon {
-  color: var(--primary-color);
+  color: var(--brand-primary);
   flex-shrink: 0;
 }
 

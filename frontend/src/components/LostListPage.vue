@@ -361,7 +361,7 @@ const formatDate = (dateStr) => {
   box-shadow: 0 2px 10px rgba(0,0,0,0.02);
 }
 .highlight-text {
-  color: var(--primary-color);
+  color: var(--brand-primary);
   font-weight: 700;
 }
 .result-hint strong {
@@ -369,7 +369,7 @@ const formatDate = (dateStr) => {
   font-size: 16px;
 }
 .semantic-tag {
-  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
   border: none;
 }
 
@@ -458,8 +458,8 @@ const formatDate = (dateStr) => {
 .item-type {
   font-size: 12px;
   font-weight: 600;
-  color: var(--primary-color);
-  background: rgba(99, 102, 241, 0.1);
+  color: var(--brand-primary);
+  background: rgba(124, 58, 237, 0.1);
   padding: 4px 8px;
   border-radius: 6px;
 }

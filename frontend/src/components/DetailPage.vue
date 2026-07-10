@@ -86,7 +86,7 @@
           </div>
 
           <!-- 操作区 -->
-          <div class="action-card glass-card" v-if="auth.isLoggedIn">
+          <div class="action-card glass-card" v-if="userStore.isAuthenticated">
             <template v-if="item.status === 'lost'">
               <el-button v-if="canManageItem" type="success" size="large" @click="handleMarkFound" :loading="actionLoading" class="action-btn" round>
                 <el-icon><CircleCheck /></el-icon> 我已找回该物品
@@ -234,7 +234,9 @@ import {
   CircleCheck, WarningFilled, Star, InfoFilled, Document, Clock, ChatLineRound, MagicStick
 } from '@element-plus/icons-vue'
 import { lostItemsApi, resolveImageUrl } from '../api'
-import auth from '../auth'
+import { useUserStore } from '../stores/user'
+
+const userStore = useUserStore()
 
 const route = useRoute()
 const router = useRouter()
@@ -258,8 +260,8 @@ const currentImage = computed(() => {
 })
 
 const canManageItem = computed(() => {
-  if (!auth.isLoggedIn || !item.value) return false
-  return auth.isAdmin || item.value.user_id === auth.user?.id
+  if (!userStore.isAuthenticated || !item.value) return false
+  return userStore.isAdmin || item.value.user_id === userStore.user?.id
 })
 
 onMounted(() => {
@@ -347,8 +349,8 @@ const handleMarkLost = async () => {
 }
 
 const handleClaim = () => {
-  if (!auth.isLoggedIn) {
-    auth.loginWithCasdoor(`/#${route.fullPath}`)
+  if (!userStore.isAuthenticated) {
+    userStore.loginWithCasdoor(`/#${route.fullPath}`)
     return
   }
   claimForm.value = { name: '', contact: '' }
@@ -499,7 +501,7 @@ const simColor = (score) => {
   opacity: 0.8;
 }
 .thumb.active {
-  border-color: var(--primary-color);
+  border-color: var(--brand-primary);
   opacity: 1;
   transform: scale(1.05);
 }
@@ -590,7 +592,7 @@ const simColor = (score) => {
   color: var(--text-primary);
 }
 .card-heading .el-icon {
-  color: var(--primary-color);
+  color: var(--brand-primary);
 }
 
 .desc-text {
@@ -614,7 +616,7 @@ const simColor = (score) => {
 }
 .meta-item .el-icon {
   font-size: 24px;
-  color: var(--primary-color);
+  color: var(--brand-primary);
   margin-top: 4px;
 }
 .meta-content {
@@ -792,7 +794,7 @@ const simColor = (score) => {
 }
 .claim-icon .el-icon {
   font-size: 48px;
-  color: var(--primary-color);
+  color: var(--brand-primary);
 }
 .claim-target {
   font-size: 20px;

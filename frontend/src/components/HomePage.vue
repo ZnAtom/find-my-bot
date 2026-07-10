@@ -24,7 +24,7 @@
         </div>
         <div class="quick-stats">
           <div class="stat-card glass-card">
-            <el-icon size="28" color="var(--primary-color)"><Box /></el-icon>
+            <el-icon size="28" color="var(--brand-primary)"><Box /></el-icon>
             <div class="stat-info">
               <span class="stat-value">{{ stats.total_items || 0 }}</span>
               <span class="stat-label">总失物</span>
@@ -199,8 +199,7 @@ const formatDate = (dateStr) => {
   position: relative;
   padding: 100px 0 120px;
   text-align: center;
-  overflow: hidden;
-  background-color: var(--background-color);
+  background: transparent;
 }
 
 .hero-bg-animated {
@@ -282,15 +281,19 @@ const formatDate = (dateStr) => {
   align-items: center;
   gap: 16px;
   padding: 20px 32px;
-  background: var(--surface-color);
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
   border-radius: var(--border-radius-lg);
   min-width: 200px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.03);
-  transition: transform 0.3s ease;
+  box-shadow: var(--glass-shadow);
+  transition: all 0.4s var(--spring-easing);
 }
 
 .stat-card:hover {
-  transform: translateY(-5px);
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 15px 30px rgba(124, 58, 237, 0.1);
+  background: var(--glass-hover-bg);
 }
 
 .stat-info {
@@ -344,13 +347,14 @@ const formatDate = (dateStr) => {
 
 /* ===== 现代卡片 ===== */
 .modern-card {
-  background: var(--surface-color);
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
   border-radius: var(--border-radius-lg);
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.03);
-  border: 1px solid var(--border-color);
+  transition: all 0.4s var(--spring-easing);
+  box-shadow: var(--glass-shadow);
+  border: 1px solid var(--glass-border);
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -358,9 +362,9 @@ const formatDate = (dateStr) => {
 }
 
 .modern-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 20px 40px rgba(0,0,0,0.08);
-  border-color: transparent;
+  transform: translateY(-10px);
+  box-shadow: 0 20px 40px rgba(31, 38, 135, 0.1);
+  background: var(--glass-hover-bg);
 }
 
 .card-image-wrapper {
@@ -433,8 +437,8 @@ const formatDate = (dateStr) => {
 .item-type {
   font-size: 13px;
   font-weight: 600;
-  color: var(--primary-color);
-  background: rgba(99, 102, 241, 0.1);
+  color: var(--brand-primary);
+  background: rgba(124, 58, 237, 0.1);
   padding: 4px 10px;
   border-radius: 6px;
 }

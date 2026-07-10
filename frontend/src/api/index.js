@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { ElMessage } from 'element-plus'
 
 // 动态 API 地址：开发环境用 localhost:8000，生产环境用空（同域反向代理）
 const apiBase = import.meta.env.VITE_API_BASE || ''
@@ -16,6 +17,34 @@ const uploadClient = axios.create({
   timeout: 30000,
   withCredentials: true,
 })
+
+// 请求拦截器
+api.interceptors.request.use(config => config, error => Promise.reject(error))
+
+// 响应拦截器
+api.interceptors.response.use(
+  response => response,
+  error => {
+    const status = error.response ? error.response.status : null
+    if (status === 401) {
+      // 401交由路由守卫处理，不全局报错以防止 /auth/me 首次加载出错
+    } else if (status === 403) {
+      ElMessage.error('您没有权限执行此操作')
+    } else if (status >= 500) {
+      ElMessage.error('服务器内部错误，请稍后再试')
+    } else if (status === 400 || status === 422) {
+      const msg = error.response.data?.detail || '请求参数错误'
+      if (typeof msg === 'string') {
+        ElMessage.warning(msg)
+      } else {
+        ElMessage.warning('请求参数错误')
+      }
+    } else if (error.code !== 'ERR_CANCELED') {
+      ElMessage.error('网络请求失败，请检查网络连接')
+    }
+    return Promise.reject(error)
+  }
+)
 
 // ===== API 方法 =====
 

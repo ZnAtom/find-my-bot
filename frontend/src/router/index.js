@@ -5,7 +5,7 @@ import CreatePage from '../components/CreatePage.vue'
 import AdminPage from '../components/AdminPage.vue'
 import DetailPage from '../components/DetailPage.vue'
 import ProfilePage from '../components/ProfilePage.vue'
-import auth from '../auth'
+import { useUserStore } from '../stores/user'
 
 const routes = [
   { path: '/', name: 'home', component: HomePage, meta: { public: true } },
@@ -22,16 +22,17 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  if (!auth.state.loaded) {
-    await auth.restoreSession()
+  const userStore = useUserStore()
+  if (!userStore.isInitialized) {
+    await userStore.fetchUser()
   }
 
-  if (to.meta.requiresAuth && !auth.isLoggedIn) {
-    auth.loginWithCasdoor(`/#${to.fullPath}`)
+  if (to.meta.requiresAuth && !userStore.isAuthenticated) {
+    userStore.loginWithCasdoor(`/#${to.fullPath}`)
     return false
   }
 
-  if (to.meta.requiresAdmin && !auth.isAdminView) {
+  if (to.meta.requiresAdmin && !userStore.isAdminView) {
     return { name: 'home' }
   }
 })

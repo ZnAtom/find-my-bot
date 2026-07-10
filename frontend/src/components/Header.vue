@@ -2,7 +2,7 @@
   <el-header class="header glass-card">
     <div class="header-content">
       <div class="logo" @click="navigate('home')">
-        <el-icon size="28" color="var(--primary-color)"><Search /></el-icon>
+        <el-icon size="28" color="var(--brand-primary)"><Search /></el-icon>
         <span class="logo-text">校园失物招领</span>
       </div>
 
@@ -15,22 +15,22 @@
           <el-menu-item index="lost" @click="navigate('lost')">
             <el-icon><Document /></el-icon> 发现
           </el-menu-item>
-          <el-menu-item v-if="auth.isAdminView" index="admin" @click="navigate('admin')">
+          <el-menu-item v-if="userStore.isAdminView" index="admin" @click="navigate('admin')">
             <el-icon><Setting /></el-icon> 管理
           </el-menu-item>
         </el-menu>
         
         <div class="nav-actions">
-          <el-button v-if="auth.isLoggedIn" type="primary" size="large" round class="publish-btn" @click="navigate('create')">
+          <el-button v-if="userStore.isAuthenticated" type="primary" size="large" round class="publish-btn" @click="navigate('create')">
             <el-icon><Plus /></el-icon> 发布寻物/招领
           </el-button>
-          <el-button v-else type="primary" size="large" round class="publish-btn" @click="login">
+          <el-button v-else type="primary" size="large" round class="publish-btn" @click="userStore.loginWithCasdoor()">
             <el-icon><User /></el-icon> 登录
           </el-button>
-          <el-dropdown v-if="auth.isLoggedIn" trigger="click">
+          <el-dropdown v-if="userStore.isAuthenticated" trigger="click">
             <el-button text class="user-menu-btn">
               <el-icon><User /></el-icon>
-              <span>{{ auth.user?.name || auth.user?.student_id || '已登录' }}</span>
+              <span>{{ userStore.user?.name || userStore.user?.student_id || '已登录' }}</span>
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
@@ -38,10 +38,9 @@
                   <el-icon><User /></el-icon>
                   个人中心
                 </el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin" disabled>{{ auth.viewLabel }}</el-dropdown-item>
-                <el-dropdown-item v-if="auth.isAdmin" @click="auth.toggleView()">
+                <el-dropdown-item v-if="userStore.isAdmin" @click="userStore.toggleView()">
                   <el-icon><Switch /></el-icon>
-                  切换到{{ auth.isAdminView ? '普通用户预览' : '管理员视角' }}
+                  切换到{{ userStore.isAdminView ? '普通用户预览' : '管理员视角' }}
                 </el-dropdown-item>
                 <el-dropdown-item divided @click="logout">
                   <el-icon><SwitchButton /></el-icon> 退出登录
@@ -78,13 +77,13 @@
           <span>{{ item.label }}</span>
         </div>
         <div class="drawer-action">
-          <el-button v-if="auth.isLoggedIn" type="primary" size="large" round class="publish-btn full-width" @click="navigate('create'); drawerVisible = false">
+          <el-button v-if="userStore.isAuthenticated" type="primary" size="large" round class="publish-btn full-width" @click="navigate('create'); drawerVisible = false">
             <el-icon><Plus /></el-icon> 发布寻物/招领
           </el-button>
-          <el-button v-else type="primary" size="large" round class="publish-btn full-width" @click="login(); drawerVisible = false">
+          <el-button v-else type="primary" size="large" round class="publish-btn full-width" @click="userStore.loginWithCasdoor(); drawerVisible = false">
             <el-icon><User /></el-icon> 登录
           </el-button>
-          <el-button v-if="auth.isLoggedIn" size="large" round class="full-width logout-btn" @click="logout(); drawerVisible = false">
+          <el-button v-if="userStore.isAuthenticated" size="large" round class="full-width logout-btn" @click="logout(); drawerVisible = false">
             <el-icon><SwitchButton /></el-icon> 退出登录
           </el-button>
         </div>
@@ -97,7 +96,9 @@
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Search, HomeFilled, Document, Plus, Setting, Menu, User, SwitchButton, Switch } from '@element-plus/icons-vue'
-import auth from '../auth'
+import { useUserStore } from '../stores/user'
+
+const userStore = useUserStore()
 
 const router = useRouter()
 const route = useRoute()
@@ -108,20 +109,16 @@ const drawerVisible = ref(false)
 const navItems = computed(() => [
   { key: 'home', label: '首页', icon: HomeFilled },
   { key: 'lost', label: '发现', icon: Document },
-  ...(auth.isLoggedIn ? [{ key: 'profile', label: '个人中心', icon: User }] : []),
-  ...(auth.isAdminView ? [{ key: 'admin', label: '管理后台', icon: Setting }] : []),
+  ...(userStore.isAuthenticated ? [{ key: 'profile', label: '个人中心', icon: User }] : []),
+  ...(userStore.isAdminView ? [{ key: 'admin', label: '管理后台', icon: Setting }] : []),
 ])
 
 const navigate = (name) => {
   router.push({ name })
 }
 
-const login = () => {
-  auth.loginWithCasdoor(window.location.pathname + window.location.search + window.location.hash)
-}
-
 const logout = async () => {
-  await auth.logout()
+  await userStore.logout()
   if (route.meta.requiresAuth) {
     router.push({ name: 'home' })
   }
@@ -139,7 +136,12 @@ const logout = async () => {
   border-left: none;
   border-right: none;
   border-top: none;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 4px 30px rgba(0,0,0,0.02);
+  transition: all 0.3s ease;
 }
 
 .header-content {
@@ -167,7 +169,7 @@ const logout = async () => {
 .logo-text {
   font-size: 22px;
   font-weight: 800;
-  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.5px;
@@ -201,11 +203,11 @@ const logout = async () => {
 .nav-menu :deep(.el-menu-item:hover),
 .nav-menu :deep(.el-menu-item.is-active) {
   background: transparent;
-  color: var(--primary-color);
+  color: var(--brand-primary);
 }
 
 .nav-menu :deep(.el-menu-item.is-active) {
-  border-bottom-color: var(--primary-color);
+  border-bottom-color: var(--brand-primary);
 }
 
 .nav-actions {
@@ -269,8 +271,8 @@ const logout = async () => {
 
 .drawer-item:hover,
 .drawer-item.active {
-  background: rgba(99, 102, 241, 0.1);
-  color: var(--primary-color);
+  background: rgba(124, 58, 237, 0.08);
+  color: var(--brand-primary);
 }
 
 .drawer-icon {

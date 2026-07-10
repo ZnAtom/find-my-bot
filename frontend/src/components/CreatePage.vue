@@ -171,7 +171,9 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Edit, Picture, User, Phone, ChatDotRound, Warning, CircleCheck } from '@element-plus/icons-vue'
 import { apiBase, lostItemsApi } from '../api'
-import auth from '../auth'
+import { useUserStore } from '../stores/user'
+
+const userStore = useUserStore()
 
 const router = useRouter()
 const formRef = ref(null)
@@ -210,10 +212,10 @@ const rules = {
 }
 
 onMounted(() => {
-  if (auth.user) {
-    formData.contact_person = formData.contact_person || auth.user.name || auth.user.student_id || ''
-    formData.contact_phone = formData.contact_phone || auth.user.phone || ''
-    formData.contact_qq = formData.contact_qq || auth.user.qq || ''
+  if (userStore.user) {
+    formData.contact_person = formData.contact_person || userStore.user.name || userStore.user.student_id || ''
+    formData.contact_phone = formData.contact_phone || userStore.user.phone || ''
+    formData.contact_qq = formData.contact_qq || userStore.user.qq || ''
   }
 })
 
@@ -390,10 +392,10 @@ const confirmSubmit = async () => {
   margin-right: 0;
 }
 .type-selector :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
-  border-color: var(--primary-color) !important;
-  background-color: rgba(99, 102, 241, 0.05);
-  color: var(--primary-color);
-  box-shadow: 0 0 0 1px var(--primary-color) !important;
+  border-color: var(--brand-primary) !important;
+  background-color: rgba(124, 58, 237, 0.05);
+  color: var(--brand-primary);
+  box-shadow: 0 0 0 1px var(--brand-primary) !important;
 }
 
 .radio-content {
@@ -483,10 +485,10 @@ const confirmSubmit = async () => {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px dashed var(--border-color);
-  color: var(--primary-color) !important;
+  color: var(--brand-primary) !important;
 }
 .contact-info p {
-  color: var(--primary-color) !important;
+  color: var(--brand-primary) !important;
   font-weight: 500;
 }
 </style>

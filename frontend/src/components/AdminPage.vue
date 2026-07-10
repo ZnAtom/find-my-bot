@@ -107,7 +107,7 @@
               提升为管理员
             </el-button>
             <el-button
-              v-else-if="scope.row.id !== auth.user?.id"
+              v-else-if="scope.row.id !== userStore.user?.id"
               type="warning" link size="small"
               @click="demoteUser(scope.row.id)"
             >
@@ -167,7 +167,9 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { HelpFilled, CircleCheck, Box, User } from '@element-plus/icons-vue'
 import { lostItemsApi, statsApi, usersApi } from '../api'
-import auth from '../auth'
+import { useUserStore } from '../stores/user'
+
+const userStore = useUserStore()
 
 const router = useRouter()
 const stats = ref({})
@@ -194,14 +196,14 @@ const statCards = computed(() => [
 ])
 
 onMounted(() => {
-  if (!auth.isAdminView) {
+  if (!userStore.isAdminView) {
     router.replace({ name: 'home' })
     return
   }
   loadAll()
 })
 
-watch(() => auth.isAdminView, (isAdminView) => {
+watch(() => userStore.isAdminView, (isAdminView) => {
   if (!isAdminView) {
     router.replace({ name: 'home' })
   }
