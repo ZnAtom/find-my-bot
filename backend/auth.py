@@ -86,7 +86,8 @@ async def exchange_code_for_token(code: str) -> dict:
         "code": code,
         "redirect_uri": CASDOOR_REDIRECT_URI,
     }
-    async with httpx.AsyncClient(timeout=20) as client:
+    transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+    async with httpx.AsyncClient(timeout=20, transport=transport) as client:
         resp = await client.post(f"{CASDOOR_ENDPOINT}/api/login/oauth/access_token", data=data)
     if resp.status_code != 200:
         raise HTTPException(status_code=401, detail="Casdoor token 交换失败")
@@ -97,7 +98,8 @@ async def exchange_code_for_token(code: str) -> dict:
 
 
 async def get_casdoor_userinfo(access_token: str) -> dict:
-    async with httpx.AsyncClient(timeout=20) as client:
+    transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+    async with httpx.AsyncClient(timeout=20, transport=transport) as client:
         resp = await client.get(
             f"{CASDOOR_ENDPOINT}/api/userinfo",
             headers={"Authorization": f"Bearer {access_token}"},
