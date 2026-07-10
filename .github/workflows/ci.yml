@@ -58,6 +58,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
+      - name: Check for changed files
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            backend:
+              - 'backend/**'
+            db:
+              - 'Dockerfile'
+              - 'init.sql'
+
       - name: Downcase REPO
         run: |
           echo "REPO=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
@@ -70,6 +83,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata (tags, labels) for DB
+        if: steps.filter.outputs.db == 'true'
         id: meta-db
         uses: docker/metadata-action@v5
         with:
@@ -79,6 +93,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push DB Docker image
+        if: steps.filter.outputs.db == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -87,6 +102,7 @@ jobs:
           labels: ${{ steps.meta-db.outputs.labels }}
 
       - name: Extract metadata (tags, labels) for Frontend
+        if: steps.filter.outputs.frontend == 'true'
         id: meta-frontend
         uses: docker/metadata-action@v5
         with:
@@ -96,6 +112,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Frontend Docker image
+        if: steps.filter.outputs.frontend == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
@@ -104,6 +121,7 @@ jobs:
           labels: ${{ steps.meta-frontend.outputs.labels }}
 
       - name: Extract metadata (tags, labels) for Backend
+        if: steps.filter.outputs.backend == 'true'
         id: meta-backend
         uses: docker/metadata-action@v5
         with:
@@ -113,6 +131,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Backend Docker image
+        if: steps.filter.outputs.backend == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./backend
@@ -128,10 +147,15 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           cd k8s
-          # Update the images to point to the new commit SHA (using nju mirror)
-          kustomize edit set image ghcr.io/${{ env.REPO }}-frontend=ghcr.nju.edu.cn/${{ env.REPO }}-frontend:sha-${{ github.sha }}
-          kustomize edit set image ghcr.io/${{ env.REPO }}-backend=ghcr.nju.edu.cn/${{ env.REPO }}-backend:sha-${{ github.sha }}
-          kustomize edit set image ghcr.io/${{ env.REPO }}-db=ghcr.nju.edu.cn/${{ env.REPO }}-db:sha-${{ github.sha }}
+          if [ "${{ steps.filter.outputs.frontend }}" == "true" ]; then
+            kustomize edit set image ghcr.io/${{ env.REPO }}-frontend=ghcr.nju.edu.cn/${{ env.REPO }}-frontend:sha-${{ github.sha }}
+          fi
+          if [ "${{ steps.filter.outputs.backend }}" == "true" ]; then
+            kustomize edit set image ghcr.io/${{ env.REPO }}-backend=ghcr.nju.edu.cn/${{ env.REPO }}-backend:sha-${{ github.sha }}
+          fi
+          if [ "${{ steps.filter.outputs.db }}" == "true" ]; then
+            kustomize edit set image ghcr.io/${{ env.REPO }}-db=ghcr.nju.edu.cn/${{ env.REPO }}-db:sha-${{ github.sha }}
+          fi
       - name: Commit and push K8s manifest changes (GitOps)
         if: github.event_name != 'pull_request'
         run: |
