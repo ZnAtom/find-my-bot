@@ -7,12 +7,14 @@ const apiTimeout = 15000
 const api = axios.create({
   baseURL: apiBase + '/api',
   timeout: apiTimeout,
+  withCredentials: true,
 })
 
 // 上传文件用单独的 axios 实例（上传可能耗时更长）
 const uploadClient = axios.create({
   baseURL: apiBase,
   timeout: 30000,
+  withCredentials: true,
 })
 
 // ===== API 方法 =====
@@ -31,10 +33,17 @@ export const usersApi = {
   getAll: () => api.get('/users'),
   getById: (id) => api.get(`/users/${id}`),
   create: (data) => api.post('/users', data),
+  update: (id, data) => api.put(`/users/${id}`, data),
 }
 
 export const statsApi = {
   get: () => api.get('/stats'),
+}
+
+export const authApi = {
+  loginUrl: (next = '/') => `${apiBase}/api/auth/login?next=${encodeURIComponent(next)}`,
+  me: () => api.get('/auth/me'),
+  logout: () => api.post('/auth/logout'),
 }
 
 export const uploadApi = {

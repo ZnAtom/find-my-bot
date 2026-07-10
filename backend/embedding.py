@@ -11,6 +11,9 @@ VECTOR_DIM = 1536
 
 def init_model():
     global _model
+    if _model is not None:
+        return
+
     if torch.backends.mps.is_available():
         device = "mps"
         dtype = torch.float16
@@ -32,11 +35,15 @@ def init_model():
 
 
 def encode_text(text: str) -> list[float]:
+    if _model is None:
+        init_model()
     embedding = _model.encode(text, normalize_embeddings=True)
     return embedding.tolist()
 
 
 def encode_image(image_path: str) -> list[float]:
+    if _model is None:
+        init_model()
     img = Image.open(image_path)
     img.thumbnail((448, 448))
     embedding = _model.encode(img, normalize_embeddings=True)

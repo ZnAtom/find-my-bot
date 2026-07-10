@@ -86,9 +86,9 @@
           </div>
 
           <!-- 操作区 -->
-          <div class="action-card glass-card">
+          <div class="action-card glass-card" v-if="auth.isLoggedIn">
             <template v-if="item.status === 'lost'">
-              <el-button type="success" size="large" @click="handleMarkFound" :loading="actionLoading" class="action-btn" round>
+              <el-button v-if="canManageItem" type="success" size="large" @click="handleMarkFound" :loading="actionLoading" class="action-btn" round>
                 <el-icon><CircleCheck /></el-icon> 我已找回该物品
               </el-button>
               <el-button type="primary" size="large" plain @click="handleClaim" :loading="actionLoading" class="action-btn" round>
@@ -96,7 +96,7 @@
               </el-button>
             </template>
             <template v-else>
-              <el-button type="warning" size="large" @click="handleMarkLost" :loading="actionLoading" class="action-btn" round>
+              <el-button v-if="canManageItem" type="warning" size="large" @click="handleMarkLost" :loading="actionLoading" class="action-btn" round>
                 <el-icon><WarningFilled /></el-icon> 取消找回标记
               </el-button>
             </template>
@@ -234,6 +234,7 @@ import {
   CircleCheck, WarningFilled, Star, InfoFilled, Document, Clock, ChatLineRound, MagicStick
 } from '@element-plus/icons-vue'
 import { lostItemsApi, resolveImageUrl } from '../api'
+import auth from '../auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -254,6 +255,11 @@ const imageList = computed(() => {
 const currentImage = computed(() => {
   if (imageList.value.length === 0) return ''
   return imageList.value[currentImageIndex.value] || imageList.value[0]
+})
+
+const canManageItem = computed(() => {
+  if (!auth.isLoggedIn || !item.value) return false
+  return auth.isAdmin || item.value.user_id === auth.user?.id
 })
 
 onMounted(() => {
@@ -341,6 +347,10 @@ const handleMarkLost = async () => {
 }
 
 const handleClaim = () => {
+  if (!auth.isLoggedIn) {
+    auth.loginWithCasdoor(`/#${route.fullPath}`)
+    return
+  }
   claimForm.value = { name: '', contact: '' }
   claimDialogVisible.value = true
 }
@@ -352,10 +362,8 @@ const confirmClaim = async () => {
   }
   actionLoading.value = true
   try {
-    await lostItemsApi.update(item.value.id, { status: 'found' })
-    item.value.status = 'found'
     claimDialogVisible.value = false
-    ElMessage.success('认领请求已发送！请耐心等待发布者联系')
+    ElMessage.success('认领请求已记录，请通过页面联系方式联系发布者核实')
   } catch (e) {
     ElMessage.error('操作失败')
   } finally {

@@ -75,6 +75,50 @@
       </el-table>
     </div>
 
+    <!-- 用户管理 -->
+    <div class="table-section" style="margin-top: 40px">
+      <h3>用户管理</h3>
+      <el-table :data="users" border v-loading="loadingUsers">
+        <el-table-column prop="id" label="ID" width="60" />
+        <el-table-column prop="name" label="姓名" width="120" />
+        <el-table-column prop="student_id" label="学号 / Casdoor ID" min-width="200">
+          <template #default="scope">
+            <span style="font-family: monospace; font-size: 12px">{{ scope.row.student_id }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="email" label="邮箱" width="200" />
+        <el-table-column prop="role" label="角色" width="100">
+          <template #default="scope">
+            <el-tag :type="scope.row.role === 'admin' ? 'danger' : 'info'" size="small">
+              {{ scope.row.role === 'admin' ? '管理员' : '普通用户' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="注册时间" width="180">
+          <template #default="scope">{{ formatTime(scope.row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="140">
+          <template #default="scope">
+            <el-button
+              v-if="scope.row.role === 'user'"
+              type="primary" link size="small"
+              @click="promoteUser(scope.row.id)"
+            >
+              提升为管理员
+            </el-button>
+            <el-button
+              v-else-if="scope.row.id !== auth.user?.id"
+              type="warning" link size="small"
+              @click="demoteUser(scope.row.id)"
+            >
+              降级为普通用户
+            </el-button>
+            <span v-else class="self-role-note">当前账号</span>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
     <!-- 向量详情弹窗 -->
     <el-dialog v-model="vectorDialogVisible" title="向量详情" width="700px">
       <template v-if="selectedItem">
@@ -118,16 +162,19 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { HelpFilled, CircleCheck, Box, User } from '@element-plus/icons-vue'
-import { lostItemsApi, statsApi } from '../api'
+import { lostItemsApi, statsApi, usersApi } from '../api'
+import auth from '../auth'
 
 const router = useRouter()
 const stats = ref({})
 const items = ref([])
+const users = ref([])
 const loading = ref(true)
+const loadingUsers = ref(true)
 const dialogVisible = ref(false)
 const vectorDialogVisible = ref(false)
 const selectedItem = ref(null)
@@ -147,22 +194,63 @@ const statCards = computed(() => [
 ])
 
 onMounted(() => {
+  if (!auth.isAdminView) {
+    router.replace({ name: 'home' })
+    return
+  }
   loadAll()
+})
+
+watch(() => auth.isAdminView, (isAdminView) => {
+  if (!isAdminView) {
+    router.replace({ name: 'home' })
+  }
 })
 
 const loadAll = async () => {
   loading.value = true
+  loadingUsers.value = true
   try {
-    const [statsRes, itemsRes] = await Promise.all([
+    const [statsRes, itemsRes, usersRes] = await Promise.all([
       statsApi.get(),
       lostItemsApi.getAll({ page: 1, page_size: 100 }),
+      usersApi.getAll(),
     ])
     stats.value = statsRes.data
     items.value = itemsRes.data.items
+    users.value = usersRes.data
   } catch (e) {
     console.error('加载失败', e)
   } finally {
     loading.value = false
+    loadingUsers.value = false
+  }
+}
+
+const promoteUser = async (userId) => {
+  try {
+    await usersApi.update(userId, { role: 'admin' })
+    ElMessage.success('已提升为管理员')
+    loadAll()
+  } catch (e) {
+    ElMessage.error('操作失败')
+  }
+}
+
+const demoteUser = async (userId) => {
+  try {
+    await ElMessageBox.confirm('确定要将该用户降级为普通用户吗？', '确认操作', {
+      type: 'warning',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+    })
+    await usersApi.update(userId, { role: 'user' })
+    ElMessage.success('已降级为普通用户')
+    loadAll()
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error('操作失败')
+    }
   }
 }
 
