@@ -56,12 +56,19 @@ function toggleView() {
   localStorage.setItem(VIEW_KEY, state.viewMode)
 }
 
+async function updateProfile(data) {
+  const res = await authApi.updateProfile(data)
+  state.user = res.data
+  return res.data
+}
+
 export const auth = {
   state,
   restoreSession,
   loginWithCasdoor,
   logout,
   toggleView,
+  updateProfile,
   get user() {
     return state.user
   },

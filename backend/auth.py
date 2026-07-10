@@ -65,7 +65,10 @@ def ensure_auth_config():
 
 
 def get_db_connection():
-    return psycopg2.connect(**DB_CONFIG)
+    try:
+        return psycopg2.connect(**DB_CONFIG)
+    except psycopg2.OperationalError:
+        raise HTTPException(status_code=503, detail="数据库连接失败，请检查 DB_HOST/DB_PORT 和 PostgreSQL 服务")
 
 
 def make_login_url(state: str) -> str:
@@ -165,14 +168,13 @@ def get_or_create_user(userinfo: dict) -> dict:
         cur.execute("SELECT * FROM users WHERE casdoor_sub = %s", (casdoor_sub,))
         row = cur.fetchone()
         if row:
+            # 已存在用户：只更新 Casdoor 原始名，保留用户自己编辑的昵称和邮箱
             cur.execute(
                 """UPDATE users
-                   SET name = COALESCE(%s, name),
-                       email = COALESCE(%s, email),
-                       casdoor_name = %s
+                   SET casdoor_name = %s
                    WHERE id = %s
                    RETURNING *""",
-                (name, email, userinfo.get("name"), row["id"]),
+                (userinfo.get("name"), row["id"]),
             )
             conn.commit()
             return _serialize_user(cur.fetchone())
@@ -180,15 +182,14 @@ def get_or_create_user(userinfo: dict) -> dict:
         cur.execute("SELECT * FROM users WHERE student_id = %s", (student_id,))
         row = cur.fetchone()
         if row:
+            # 链接 Casdoor 账号到已有本地用户，不覆盖昵称和邮箱
             cur.execute(
                 """UPDATE users
                    SET casdoor_sub = %s,
-                       casdoor_name = %s,
-                       name = COALESCE(%s, name),
-                       email = COALESCE(%s, email)
+                       casdoor_name = %s
                    WHERE id = %s
                    RETURNING *""",
-                (casdoor_sub, userinfo.get("name"), name, email, row["id"]),
+                (casdoor_sub, userinfo.get("name"), row["id"]),
             )
             conn.commit()
             return _serialize_user(cur.fetchone())
@@ -310,6 +311,9 @@ def verify_csrf_origin(request: Request):
     origin = _origin_from_header(request.headers.get("origin"))
     referer = _origin_from_header(request.headers.get("referer"))
     request_origin = origin or referer
+
+    if not request_origin and request.headers.get("sec-fetch-site") == "same-origin":
+        return
 
     if not request_origin or request_origin.rstrip("/") not in CSRF_TRUSTED_ORIGINS:
         raise HTTPException(status_code=403, detail="请求来源校验失败")

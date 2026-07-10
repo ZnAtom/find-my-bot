@@ -153,7 +153,7 @@ const loadStats = async () => {
 const loadLatestItems = async () => {
   loading.value = true
   try {
-    const res = await lostItemsApi.getAll({ page: 1, page_size: 4, status: 'pending' })
+    const res = await lostItemsApi.getAll({ page: 1, page_size: 4 })
     latestItems.value = res.data.items || []
   } catch (e) {
     console.error('加载最新失物失败', e)
@@ -163,13 +163,13 @@ const loadLatestItems = async () => {
 }
 
 const getStatusClass = (item) => {
-  if (item.status === 'resolved') return 'resolved'
-  return item.item_type === 'lost' ? 'lost' : 'found'
+  if (item.status === 'found') return 'resolved'
+  return item.status === 'lost' ? 'lost' : 'found'
 }
 
 const getStatusText = (item) => {
-  if (item.status === 'resolved') return '已找回'
-  return item.item_type === 'lost' ? '找物' : '找主'
+  if (item.status === 'found') return '已找回'
+  return item.status === 'lost' ? '待找回' : '招领'
 }
 
 const goDetail = (id) => {

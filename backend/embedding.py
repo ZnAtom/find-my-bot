@@ -4,6 +4,7 @@ from PIL import Image
 from sentence_transformers import SentenceTransformer
 
 os.environ.setdefault("HF_ENDPOINT", os.environ.get("HF_ENDPOINT", "https://huggingface.co"))
+os.environ.setdefault("HF_HUB_OFFLINE", os.environ.get("HF_HUB_OFFLINE", "0"))
 
 _model = None
 VECTOR_DIM = 1536

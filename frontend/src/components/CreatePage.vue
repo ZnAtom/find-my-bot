@@ -2,10 +2,10 @@
   <div class="create-page">
     <div class="form-container glass-card">
       <h2 class="page-title">发布信息</h2>
-      <el-steps :active="currentStep" finish-status="success" align-center class="steps-nav">
-        <el-step title="基础信息" icon="Edit" />
-        <el-step title="详情特征" icon="Picture" />
-        <el-step title="联系方式" icon="User" />
+      <el-steps :active="currentStep" finish-status="success" align-center class="steps-nav clickable-steps">
+        <el-step title="基础信息" icon="Edit" @click="currentStep = 0" />
+        <el-step title="详情特征" icon="Picture" @click="currentStep = 1" />
+        <el-step title="联系方式" icon="User" @click="currentStep = 2" />
       </el-steps>
 
       <div class="form-wrapper">
@@ -217,23 +217,19 @@ onMounted(() => {
   }
 })
 
-const nextStep = async () => {
-  if (!formRef.value) return
-  // 分步验证字段
-  let fieldsToValidate = []
-  if (currentStep.value === 0) fieldsToValidate = ['item_name', 'item_type']
-  if (currentStep.value === 1) fieldsToValidate = ['location', 'description']
-  
-  try {
-    await formRef.value.validateField(fieldsToValidate)
-    currentStep.value++
-  } catch (err) {
-    // 验证失败
-  }
+const nextStep = () => {
+  if (currentStep.value < 2) currentStep.value++
 }
 
 const prevStep = () => {
   currentStep.value--
+}
+
+// 把字段名映射到它所在的步骤
+const fieldStepMap = {
+  item_name: 0, item_type: 0,
+  location: 1, description: 1,
+  contact_person: 2, contact_phone: 2,
 }
 
 const beforeUpload = (file) => {
@@ -271,8 +267,16 @@ const handleRemove = (file) => {
 const submitForm = async () => {
   try {
     await formRef.value.validate()
-  } catch {
-    ElMessage.warning('请检查并完善所有必填信息')
+  } catch (err) {
+    // 找到第一个报错的字段，跳转到对应步骤
+    const errorFields = Object.keys(err || {})
+    for (const key of Object.keys(fieldStepMap)) {
+      if (errorFields.includes(key)) {
+        currentStep.value = fieldStepMap[key]
+        break
+      }
+    }
+    ElMessage.warning('请完善必填信息后提交')
     return
   }
 
@@ -344,6 +348,10 @@ const confirmSubmit = async () => {
 
 .steps-nav {
   margin-bottom: 40px;
+}
+.clickable-steps :deep(.el-step__head),
+.clickable-steps :deep(.el-step__title) {
+  cursor: pointer;
 }
 
 .form-wrapper {
