@@ -171,8 +171,9 @@ def get_or_create_user(userinfo: dict) -> dict:
                    RETURNING *""",
                 (userinfo.get("name"), new_email, row["id"]),
             )
+            updated_row = cur.fetchone()
             conn.commit()
-            return _serialize_user(cur.fetchone())
+            return _serialize_user(updated_row)
 
         cur.execute("SELECT * FROM users WHERE student_id = %s", (student_id,))
         row = cur.fetchone()
@@ -188,8 +189,9 @@ def get_or_create_user(userinfo: dict) -> dict:
                    RETURNING *""",
                 (casdoor_sub, userinfo.get("name"), new_email, row["id"]),
             )
+            updated_row = cur.fetchone()
             conn.commit()
-            return _serialize_user(cur.fetchone())
+            return _serialize_user(updated_row)
 
         cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM users")
         next_id = cur.fetchone()[0]
@@ -199,8 +201,9 @@ def get_or_create_user(userinfo: dict) -> dict:
                RETURNING *""",
             (next_id, student_id, name, email, casdoor_sub, userinfo.get("name"), "user"),
         )
+        new_row = cur.fetchone()
         conn.commit()
-        return _serialize_user(cur.fetchone())
+        return _serialize_user(new_row)
     except psycopg2.IntegrityError:
         conn.rollback()
         raise HTTPException(status_code=409, detail="本地用户创建失败：学号或 Casdoor 账号已存在")

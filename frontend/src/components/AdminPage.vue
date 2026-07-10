@@ -38,8 +38,8 @@
         <el-table-column prop="location" label="地点" />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="scope">
-            <el-tag :type="scope.row.status === 'lost' ? 'danger' : 'success'">
-              {{ scope.row.status === 'lost' ? '丢失' : '已找回' }}
+            <el-tag :type="scope.row.status === 'pending' ? 'danger' : 'success'">
+              {{ scope.row.status === 'pending' ? '待解决' : '已解决' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -64,11 +64,11 @@
             <el-button type="text" size="small" @click="editItem(scope.row)">编辑</el-button>
             <el-button type="text" size="small" @click="deleteItem(scope.row.id)" style="color: #F56C6C">删除</el-button>
             <el-button
-              v-if="scope.row.status === 'lost'"
+              v-if="scope.row.status === 'pending'"
               type="text" size="small" @click="markFound(scope.row.id)"
               style="color: #67C23A"
             >
-              标记找回
+              标记解决
             </el-button>
           </template>
         </el-table-column>
@@ -143,13 +143,19 @@
             <el-option label="其他" value="其他" />
           </el-select>
         </el-form-item>
+        <el-form-item label="信息类型">
+          <el-select v-model="editForm.post_type">
+            <el-option label="寻物" value="lost" />
+            <el-option label="招领" value="found" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="详细描述">
           <el-input type="textarea" v-model="editForm.description" :rows="3" />
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="editForm.status">
-            <el-option label="丢失" value="lost" />
-            <el-option label="已找回" value="found" />
+            <el-option label="待解决" value="pending" />
+            <el-option label="已解决" value="resolved" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -184,8 +190,9 @@ const editForm = reactive({
   id: null,
   item_name: '',
   item_type: '',
+  post_type: 'lost',
   description: '',
-  status: 'lost',
+  status: 'pending',
 })
 
 const statCards = computed(() => [
@@ -264,6 +271,7 @@ const editItem = (row) => {
   editForm.id = row.id
   editForm.item_name = row.item_name
   editForm.item_type = row.item_type
+  editForm.post_type = row.post_type
   editForm.description = row.description
   editForm.status = row.status
   dialogVisible.value = true
@@ -274,6 +282,7 @@ const saveEdit = async () => {
     await lostItemsApi.update(editForm.id, {
       item_name: editForm.item_name,
       item_type: editForm.item_type,
+      post_type: editForm.post_type,
       description: editForm.description,
       status: editForm.status,
     })

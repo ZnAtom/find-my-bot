@@ -12,7 +12,7 @@
     </div>
 
     <div class="profile-layout">
-      <aside class="profile-panel glass-card">
+      <aside class="profile-panel">
         <div class="avatar">
           <el-icon><User /></el-icon>
         </div>
@@ -46,7 +46,7 @@
         </div>
       </aside>
 
-      <section class="profile-content glass-card">
+      <section class="profile-content">
         <el-tabs v-model="activeTab" class="profile-tabs">
           <el-tab-pane label="我的发布" name="items">
             <div class="items-toolbar">
@@ -57,8 +57,8 @@
               <div class="toolbar-actions">
                 <el-select v-model="statusFilter" placeholder="全部状态" clearable @change="handleStatusChange">
                   <el-option label="全部状态" value="" />
-                  <el-option label="待找回" value="lost" />
-                  <el-option label="已找回" value="found" />
+                  <el-option label="待解决" value="pending" />
+                  <el-option label="已解决" value="resolved" />
                 </el-select>
                 <el-button :icon="Refresh" circle @click="loadItems" />
               </div>
@@ -98,8 +98,8 @@
               </el-table-column>
               <el-table-column label="状态" width="120">
                 <template #default="scope">
-                  <el-tag :type="scope.row.status === 'found' ? 'success' : 'warning'" size="small">
-                    {{ scope.row.status === 'found' ? '已找回' : '待找回' }}
+                  <el-tag :type="scope.row.status === 'resolved' ? 'success' : 'warning'" size="small">
+                    {{ scope.row.status === 'resolved' ? '已解决' : '待解决' }}
                   </el-tag>
                 </template>
               </el-table-column>
@@ -111,12 +111,12 @@
                   <el-button type="primary" link @click="goDetail(scope.row.id)">查看</el-button>
                   <el-button type="primary" link @click="openEdit(scope.row)">编辑</el-button>
                   <el-button
-                    v-if="scope.row.status !== 'found'"
+                    v-if="scope.row.status !== 'resolved'"
                     type="success"
                     link
                     @click="markFound(scope.row.id)"
                   >
-                    标记找回
+                    标记解决
                   </el-button>
                   <el-button type="danger" link @click="deleteItem(scope.row.id)">删除</el-button>
                 </template>
@@ -215,10 +215,16 @@
         <el-form-item label="详细描述">
           <el-input v-model="editForm.description" type="textarea" :rows="4" />
         </el-form-item>
+        <el-form-item label="信息类型">
+          <el-radio-group v-model="editForm.post_type">
+            <el-radio-button value="lost">寻物</el-radio-button>
+            <el-radio-button value="found">招领</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="editForm.status">
-            <el-radio-button value="lost">待找回</el-radio-button>
-            <el-radio-button value="found">已找回</el-radio-button>
+            <el-radio-button value="pending">待解决</el-radio-button>
+            <el-radio-button value="resolved">已解决</el-radio-button>
           </el-radio-group>
         </el-form-item>
       </el-form>
@@ -278,8 +284,9 @@ const editForm = reactive({
   id: null,
   item_name: '',
   item_type: '',
+  post_type: 'lost',
   description: '',
-  status: 'lost',
+  status: 'pending',
 })
 
 const profileRules = {
@@ -380,8 +387,9 @@ const openEdit = (row) => {
   editForm.id = row.id
   editForm.item_name = row.item_name
   editForm.item_type = row.item_type || ''
+  editForm.post_type = row.post_type || 'lost'
   editForm.description = row.description || ''
-  editForm.status = row.status || 'lost'
+  editForm.status = row.status || 'pending'
   editDialogVisible.value = true
 }
 
@@ -391,6 +399,7 @@ const saveItem = async () => {
     await lostItemsApi.update(editForm.id, {
       item_name: editForm.item_name,
       item_type: editForm.item_type,
+      post_type: editForm.post_type,
       description: editForm.description,
       status: editForm.status,
     })
@@ -407,8 +416,8 @@ const saveItem = async () => {
 
 const markFound = async (id) => {
   try {
-    await lostItemsApi.update(id, { status: 'found' })
-    ElMessage.success('已标记为找回')
+    await lostItemsApi.update(id, { status: 'resolved' })
+    ElMessage.success('已标记为解决')
     await loadItems()
   } catch (e) {
     console.error('标记失败', e)
@@ -518,6 +527,8 @@ const logout = async () => {
 .profile-panel,
 .profile-content {
   border-radius: 8px;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
 }
 
 .profile-panel {
