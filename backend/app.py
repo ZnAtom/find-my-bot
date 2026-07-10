@@ -8,6 +8,7 @@ import psycopg2
 import psycopg2.extras
 import os
 import uuid
+from functools import lru_cache
 from urllib.parse import unquote, urlparse
 from auth import (
     COOKIE_SECURE,
@@ -26,16 +27,48 @@ from auth import (
     safe_frontend_redirect,
     verify_csrf_origin,
 )
-from embedding import encode_text, encode_image
+from embedding import encode_text, encode_multimodal, init_model
 
 app = FastAPI(title="校园失物招领 API", version="1.0.0")
 
+
+import asyncio
+import logging
 
 CORS_ORIGINS = [
     origin.strip()
     for origin in os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
     if origin.strip()
 ]
+
+@app.on_event("startup")
+def startup():
+    init_model()
+    asyncio.create_task(periodic_email_matcher())
+
+async def periodic_email_matcher():
+    while True:
+        try:
+            # Sleep first or wait for the specific time. Let's sleep for 24h.
+            # In a real system, this would be cron-like, e.g. apscheduler.
+            await asyncio.sleep(86400)
+            logging.info("Running daily email matcher for pending lost/found items...")
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            
+            # Simple logic: check pending items against their opposite pool
+            cur.execute("SELECT id, item_type, contact_person, email FROM lost_items WHERE status = 'pending'")
+            items = cur.fetchall()
+            for item in items:
+                # Find opposite items
+                target_type = "found" if item['item_type'] == "lost" else "lost"
+                # This is just a simulation log
+                logging.info(f"Simulating sending match email to {item['contact_person']} ({item.get('email')}) for item {item['id']}")
+            
+            cur.close()
+            conn.close()
+        except Exception as e:
+            logging.error(f"Error in periodic_email_matcher: {e}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -231,27 +264,17 @@ def _iter_image_paths(image_url: Optional[str]) -> list[str]:
     return paths
 
 
-def _build_vector(item_name: str, description: Optional[str] = None, image_url: Optional[str] = None) -> Optional[str]:
-    text_parts = [item_name]
-    if description:
-        text_parts.append(description)
-    text = " ".join(text_parts)
-    vectors = []
-
+@lru_cache(maxsize=128)
+def _build_vector(item_name: str, location: Optional[str] = None, lost_time: Optional[str] = None, description: Optional[str] = None, image_url: Optional[str] = None) -> Optional[str]:
     try:
-        if text.strip():
-            vectors.append(encode_text(text))
-
-        for image_path in _iter_image_paths(image_url):
-            try:
-                vectors.append(encode_image(image_path))
-            except Exception:
-                continue
-
-        if not vectors:
-            return None
-        return _vector_str(_average_vectors(vectors))
-    except Exception:
+        image_paths = _iter_image_paths(image_url)
+        # Parse or format lost_time if necessary (assuming it is string or datetime)
+        time_str = str(lost_time) if lost_time else ""
+        vec = encode_multimodal(item_name, location or "", time_str, description or "", image_paths)
+        return _vector_str(vec)
+    except Exception as e:
+        import logging
+        logging.error(f"Error building multimodal vector: {e}")
         return None
 
 
@@ -464,13 +487,41 @@ def get_lost_items(
         "page_size": page_size
     }
 
+class MatchCheckRequest(LostItemCreate):
+    pass
+
+@app.post("/api/match-check")
+def match_check(item: MatchCheckRequest, limit: int = 5):
+    vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, item.image_url)
+    if not vector:
+        return {"results": []}
+
+    target_type = "found" if item.item_type == "lost" else "lost"
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    try:
+        cur.execute(
+            """SELECT *, 1 - (vector <=> %s::vector) AS similarity
+               FROM lost_items
+               WHERE vector IS NOT NULL AND item_type = %s AND status = 'pending'
+               ORDER BY vector <=> %s::vector
+               LIMIT %s""",
+            (vector, target_type, vector, limit)
+        )
+        items = cur.fetchall()
+        # Only return high similarity items? For now return top 5
+        return {"results": [serialize_row(row) for row in items]}
+    finally:
+        cur.close()
+        conn.close()
+
 @app.post("/api/lost-items", response_model=LostItemResponse)
 def create_lost_item(item: LostItemCreate, request: Request):
     current_user = get_current_user(request)
     verify_csrf_origin(request)
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    vector = _build_vector(item.item_name, item.description, item.image_url)
+    vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, item.image_url)
     try:
         # 显式获取下一个 ID（序列权限变通方案）
         cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM lost_items")
@@ -483,7 +534,7 @@ def create_lost_item(item: LostItemCreate, request: Request):
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
             (next_id, item.item_name, none_if_empty(item.item_type),
              none_if_empty(item.description), none_if_empty(item.location),
-             none_if_empty(item.lost_time), none_if_empty(item.status) or 'lost',
+             none_if_empty(item.lost_time), none_if_empty(item.status) or 'pending',
              none_if_empty(item.image_url), item.contact_person,
              none_if_empty(item.contact_phone), none_if_empty(item.contact_qq),
              current_user["id"],

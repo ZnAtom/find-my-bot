@@ -33,8 +33,8 @@
           <span class="filter-label">状态:</span>
           <el-radio-group v-model="filterStatus" @change="handleFilterChange">
             <el-radio-button value="">全部</el-radio-button>
-            <el-radio-button value="lost">🔍 丢失</el-radio-button>
-            <el-radio-button value="found">✅ 找回</el-radio-button>
+            <el-radio-button value="pending">🔍 待匹配</el-radio-button>
+            <el-radio-button value="resolved">✅ 已找回</el-radio-button>
           </el-radio-group>
         </div>
         
@@ -72,8 +72,8 @@
               <div v-else class="card-img-placeholder">
                 <el-icon size="48" color="#cbd5e1"><Picture /></el-icon>
               </div>
-              <div :class="['status-badge', item.status]">
-                {{ item.status === 'lost' ? '待找回' : '已找回' }}
+              <div :class="['status-badge', getStatusClass(item)]">
+                {{ getStatusText(item) }}
               </div>
             </div>
             
@@ -220,6 +220,16 @@ const resetSearch = () => {
   filterType.value = ''
   filterStatus.value = ''
   loadItems()
+}
+
+const getStatusClass = (item) => {
+  if (item.status === 'resolved') return 'resolved'
+  return item.item_type === 'lost' ? 'lost' : 'found'
+}
+
+const getStatusText = (item) => {
+  if (item.status === 'resolved') return '已找回'
+  return item.item_type === 'lost' ? '找物' : '找主'
 }
 
 const goDetail = (id) => { router.push({ name: 'detail', params: { id } }) }
@@ -430,6 +440,7 @@ const formatDate = (dateStr) => {
 }
 .status-badge.lost { background: rgba(239, 68, 68, 0.9); color: white; }
 .status-badge.found { background: rgba(16, 185, 129, 0.9); color: white; }
+.status-badge.resolved { background: rgba(107, 114, 128, 0.9); color: white; }
 
 .card-content {
   padding: 20px;

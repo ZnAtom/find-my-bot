@@ -124,6 +124,44 @@
         </div>
       </div>
     </div>
+
+    <!-- Match Check Dialog -->
+    <el-dialog v-model="matchDialogVisible" title="疑似匹配结果" width="90%" max-width="600px" destroy-on-close>
+      <div class="match-dialog-content">
+        <p class="match-tip">我们为您找到了以下疑似匹配的物品，请确认是否有您要找的！</p>
+        
+        <div v-if="matchResults.length === 0" class="no-match">
+          暂未发现高匹配度物品，您可以继续发布。
+        </div>
+        
+        <div v-else class="match-list">
+          <div v-for="item in matchResults" :key="item.id" class="match-item">
+            <div class="match-item-info">
+              <h4>{{ item.item_name }}</h4>
+              <p>地点：{{ item.location || '未知' }}</p>
+              <div v-if="item.showContact" class="contact-info">
+                <p>联系人：{{ item.contact_person }}</p>
+                <p v-if="item.contact_phone">电话：{{ item.contact_phone }}</p>
+                <p v-if="item.contact_qq">QQ：{{ item.contact_qq }}</p>
+              </div>
+            </div>
+            <div class="match-item-action">
+              <el-button v-if="!item.showContact" type="success" size="small" @click="item.showContact = true">
+                这就是我要找的！
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="matchDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="finalSubmitting" @click="confirmSubmit">
+            都没有我要找的，继续发布
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -139,9 +177,13 @@ const router = useRouter()
 const formRef = ref(null)
 const currentStep = ref(0)
 const submitting = ref(false)
+const finalSubmitting = ref(false)
 const uploadedUrls = ref([])
 const fileList = ref([])
 const uploadAction = computed(() => `${apiBase}/api/upload`)
+
+const matchDialogVisible = ref(false)
+const matchResults = ref([])
 
 const presetLocations = ['图书馆', '教学楼1号楼', '教学楼2号楼', '教学楼3号楼', '食堂', '宿舍区', '体育馆', '学生活动中心', '其他']
 
@@ -236,21 +278,44 @@ const submitForm = async () => {
 
   submitting.value = true
   try {
-    const payload = {}
-    for (const [key, value] of Object.entries(formData)) {
-      if (value !== '' && value !== null && value !== undefined) {
-        payload[key] = value
-      }
+    const payload = getPayload()
+    const matchRes = await lostItemsApi.matchCheck(payload)
+    matchResults.value = matchRes.data.results.map(item => ({ ...item, showContact: false }))
+    matchDialogVisible.value = true
+  } catch (e) {
+    ElMessage.error('匹配检查失败，直接进入发布流程')
+    confirmSubmit()
+  } finally {
+    submitting.value = false
+  }
+}
+
+const getPayload = () => {
+  const payload = {}
+  for (const [key, value] of Object.entries(formData)) {
+    if (value !== '' && value !== null && value !== undefined) {
+      payload[key] = value
     }
+  }
+  return payload
+}
+
+const confirmSubmit = async () => {
+  finalSubmitting.value = true
+  try {
+    const payload = getPayload()
+    // For new items, we set status to pending in backend automatically,
+    // but just in case we let backend handle default status.
     const res = await lostItemsApi.create(payload)
     if (res.status === 200) {
       ElMessage.success('信息发布成功！AI 已记录您的物品特征。')
+      matchDialogVisible.value = false
       router.push({ name: 'detail', params: { id: res.data.id } })
     }
   } catch (e) {
     ElMessage.error('发布失败：' + (e.response?.data?.detail || '未知错误'))
   } finally {
-    submitting.value = false
+    finalSubmitting.value = false
   }
 }
 </script>
@@ -376,5 +441,44 @@ const submitForm = async () => {
     font-size: 24px;
     margin-bottom: 24px;
   }
+}
+
+
+.match-tip {
+  font-weight: bold;
+  margin-bottom: 16px;
+  color: var(--text-primary);
+}
+.match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.match-item {
+  border: 1px solid var(--border-color);
+  padding: 12px;
+  border-radius: var(--border-radius-md);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.match-item-info h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary);
+}
+.match-item-info p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.contact-info {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color);
+  color: var(--primary-color) !important;
+}
+.contact-info p {
+  color: var(--primary-color) !important;
+  font-weight: 500;
 }
 </style>

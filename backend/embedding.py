@@ -41,10 +41,33 @@ def encode_text(text: str) -> list[float]:
     return embedding.tolist()
 
 
-def encode_image(image_path: str) -> list[float]:
+def encode_multimodal(item_name: str, location: str, time_str: str, description: str, image_paths: list[str]) -> list[float]:
     if _model is None:
         init_model()
-    img = Image.open(image_path)
-    img.thumbnail((448, 448))
-    embedding = _model.encode(img, normalize_embeddings=True)
-    return embedding.tolist()
+    parts = []
+    if item_name:
+        parts.append(f"物品：{item_name}。")
+    if location:
+        parts.append(f"地点：{location}。")
+    if time_str:
+        parts.append(f"时间：{time_str}。")
+    if description:
+        parts.append(f"描述：{description}。")
+    text_info = " ".join(parts)
+    
+    content = []
+    for image_path in image_paths:
+        if os.path.exists(image_path):
+            try:
+                img = Image.open(image_path)
+                img.thumbnail((224, 224))
+                content.append({"type": "image", "image": img})
+            except Exception as e:
+                print(f"Error loading image {image_path}: {e}")
+                
+    content.append({"type": "text", "text": text_info})
+    messages = [{"role": "user", "content": content}]
+    
+    # Qwen3-VL-Embedding supports passing messages for interleaved image-text encoding
+    embedding = _model.encode([messages], normalize_embeddings=True)
+    return embedding[0].tolist()

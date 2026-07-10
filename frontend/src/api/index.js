@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // 动态 API 地址：开发环境用 localhost:8000，生产环境用空（同域反向代理）
 const apiBase = import.meta.env.VITE_API_BASE || ''
-const apiTimeout = 15000
+const apiTimeout = 60000
 
 const api = axios.create({
   baseURL: apiBase + '/api',
@@ -23,6 +23,7 @@ export const lostItemsApi = {
   getAll: (params) => api.get('/lost-items', { params }),
   getById: (id) => api.get(`/lost-items/${id}`),
   create: (data) => api.post('/lost-items', data),
+  matchCheck: (data) => api.post('/match-check', data),
   update: (id, data) => api.put(`/lost-items/${id}`, data),
   delete: (id) => api.delete(`/lost-items/${id}`),
   search: (params) => api.get('/search', { params }),

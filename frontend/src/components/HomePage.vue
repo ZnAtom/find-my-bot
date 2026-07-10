@@ -94,8 +94,8 @@
               <div v-else class="card-img-placeholder">
                 <el-icon size="48" color="#c0c4cc"><Picture /></el-icon>
               </div>
-              <div :class="['status-badge', item.status]">
-                {{ item.status === 'lost' ? '丢失' : '已找回' }}
+              <div :class="['status-badge', getStatusClass(item)]">
+                {{ getStatusText(item) }}
               </div>
             </div>
             <div class="card-content">
@@ -153,13 +153,23 @@ const loadStats = async () => {
 const loadLatestItems = async () => {
   loading.value = true
   try {
-    const res = await lostItemsApi.getAll({ page: 1, page_size: 4, status: 'lost' })
+    const res = await lostItemsApi.getAll({ page: 1, page_size: 4, status: 'pending' })
     latestItems.value = res.data.items || []
   } catch (e) {
     console.error('加载最新失物失败', e)
   } finally {
     loading.value = false
   }
+}
+
+const getStatusClass = (item) => {
+  if (item.status === 'resolved') return 'resolved'
+  return item.item_type === 'lost' ? 'lost' : 'found'
+}
+
+const getStatusText = (item) => {
+  if (item.status === 'resolved') return '已找回'
+  return item.item_type === 'lost' ? '找物' : '找主'
 }
 
 const goDetail = (id) => {
@@ -398,6 +408,11 @@ const formatDate = (dateStr) => {
 
 .status-badge.found {
   background: rgba(16, 185, 129, 0.9);
+  color: white;
+}
+
+.status-badge.resolved {
+  background: rgba(107, 114, 128, 0.9);
   color: white;
 }
 
