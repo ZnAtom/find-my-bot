@@ -53,7 +53,10 @@ spec:
             - name: DB_USER
               value: "appuser"
             - name: DB_PASSWORD
-              value: "password"
+              valueFrom:
+                secretKeyRef:
+                  name: foundit-db-secret
+                  key: postgres_password
             - name: DB_NAME
               value: "lostfound"
             - name: DB_HOST

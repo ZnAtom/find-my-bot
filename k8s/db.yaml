@@ -38,7 +38,10 @@ spec:
             - name: POSTGRES_USER
               value: "appuser"
             - name: POSTGRES_PASSWORD
-              value: "password" # IN PRODUCTION: Use K8s Secrets instead
+              valueFrom:
+                secretKeyRef:
+                  name: foundit-db-secret
+                  key: postgres_password
             - name: POSTGRES_DB
               value: "lostfound"
             - name: HF_LOCAL_ONLY

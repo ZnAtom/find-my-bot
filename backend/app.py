@@ -8,6 +8,7 @@ import psycopg2
 import psycopg2.extras
 import os
 import uuid
+import aiofiles
 from functools import lru_cache
 from urllib.parse import unquote, urlparse
 from auth import (
@@ -29,6 +30,8 @@ from auth import (
     verify_csrf_origin,
 )
 from embedding import encode_text, encode_multimodal, init_model
+from db import get_db_connection, release_db_connection
+from email_sender import send_match_email
 
 app = FastAPI(title="校园失物招领 API", version="1.0.0")
 
@@ -59,20 +62,32 @@ async def periodic_email_matcher():
             
             # Simple logic: check pending items against their opposite pool
             cur.execute("""
-                SELECT l.id, l.item_type, l.contact_person, u.email 
+                SELECT l.id, l.item_name, l.item_type, l.contact_person, u.email, l.vector 
                 FROM lost_items l 
                 LEFT JOIN users u ON l.user_id = u.id 
-                WHERE l.status = 'pending'
+                WHERE l.status = 'pending' AND u.email IS NOT NULL AND l.vector IS NOT NULL
             """)
             items = cur.fetchall()
             for item in items:
-                # Find opposite items
                 target_type = "found" if item['item_type'] == "lost" else "lost"
-                # This is just a simulation log
-                logging.info(f"Simulating sending match email to {item['contact_person']} ({item.get('email')}) for item {item['id']}")
+                # Actual vector search for matches > 0.8
+                cur.execute("""
+                    SELECT id, item_name, 1 - (vector <=> %s::vector) AS similarity
+                    FROM lost_items
+                    WHERE item_type = %s AND status = 'pending' AND 1 - (vector <=> %s::vector) > 0.8
+                    ORDER BY similarity DESC LIMIT 5
+                """, (item['vector'], target_type, item['vector']))
+                matches = cur.fetchall()
+                if matches:
+                    await send_match_email(
+                        to_email=item['email'],
+                        item_name=item['item_name'],
+                        contact_person=item['contact_person'],
+                        matched_items=matches
+                    )
             
             cur.close()
-            conn.close()
+            release_db_connection(conn)
         except Exception as e:
             logging.error(f"Error in periodic_email_matcher: {e}")
 
@@ -128,8 +143,8 @@ async def upload_image(request: Request, file: UploadFile = File(...)):
         if len(contents) > MAX_FILE_SIZE:
             raise HTTPException(status_code=400, detail=f"文件大小超过 {MAX_FILE_SIZE // 1024 // 1024}MB 限制")
 
-        with open(file_path, "wb") as f:
-            f.write(contents)
+        async with aiofiles.open(file_path, "wb") as f:
+            await f.write(contents)
     except HTTPException:
         raise
     except Exception:
@@ -210,13 +225,6 @@ class ProfileUpdate(BaseModel):
     email: Optional[str] = None
 
 
-DB_CONFIG = {
-    "dbname": os.environ.get("DB_NAME", "lostfound"),
-    "user": os.environ.get("DB_USER", "appuser"),
-    "password": os.environ.get("DB_PASSWORD", "password"),
-    "host": os.environ.get("DB_HOST", "localhost"),
-    "port": os.environ.get("DB_PORT", "5432")
-}
 
 # 数据库向量列维度（需与 pgvector column 定义一致）
 VECTOR_DIM = int(os.environ.get("VECTOR_DIM", "1536"))
@@ -291,11 +299,7 @@ def _build_vector(item_name: str, location: Optional[str] = None, lost_time: Opt
         return None
 
 
-def get_db_connection():
-    try:
-        return psycopg2.connect(**DB_CONFIG)
-    except psycopg2.OperationalError:
-        raise HTTPException(status_code=503, detail="数据库连接失败，请检查 DB_HOST/DB_PORT 和 PostgreSQL 服务")
+
 
 
 def serialize_row(row):
@@ -425,7 +429,7 @@ def update_me(update: UserProfileUpdate, request: Request):
         raise HTTPException(status_code=400, detail=f"更新个人资料失败: {e}")
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 @app.get("/api/me/items")
 def get_my_lost_items(
@@ -459,7 +463,7 @@ def get_my_lost_items(
     )
     items = cur.fetchall()
     cur.close()
-    conn.close()
+    release_db_connection(conn)
 
     return {
         "items": [serialize_row(item) for item in items],
@@ -476,7 +480,7 @@ def get_users(request: Request):
     cur.execute("SELECT * FROM users")
     users = cur.fetchall()
     cur.close()
-    conn.close()
+    release_db_connection(conn)
     return [serialize_row(u) for u in users]
 
 @app.post("/api/users", response_model=UserResponse)
@@ -495,7 +499,7 @@ def get_user(user_id: int, request: Request):
     cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
     user = cur.fetchone()
     cur.close()
-    conn.close()
+    release_db_connection(conn)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
     return serialize_row(user)
@@ -549,7 +553,7 @@ def update_user(user_id: int, update: UserUpdate, request: Request):
         raise HTTPException(status_code=400, detail=f"更新用户失败: {e}")
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 
@@ -586,7 +590,7 @@ def get_lost_items(
     cur.execute(query, params)
     items = cur.fetchall()
     cur.close()
-    conn.close()
+    release_db_connection(conn)
     
     return {
         "items": [serialize_row(item) for item in items],
@@ -621,7 +625,7 @@ def match_check(item: MatchCheckRequest, limit: int = 5):
         return {"results": [serialize_row(row) for row in items]}
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 @app.post("/api/lost-items", response_model=LostItemResponse)
 def create_lost_item(item: LostItemCreate, request: Request):
@@ -658,7 +662,7 @@ def create_lost_item(item: LostItemCreate, request: Request):
         raise HTTPException(status_code=400, detail=f"创建失物信息失败: {e}")
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 @app.get("/api/lost-items/{item_id}", response_model=LostItemResponse)
 def get_lost_item(item_id: int):
@@ -667,7 +671,7 @@ def get_lost_item(item_id: int):
     cur.execute("SELECT * FROM lost_items WHERE id = %s", (item_id,))
     item = cur.fetchone()
     cur.close()
-    conn.close()
+    release_db_connection(conn)
     if not item:
         raise HTTPException(status_code=404, detail="物品不存在")
     return serialize_row(item)
@@ -738,7 +742,7 @@ def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
         raise HTTPException(status_code=400, detail="更新失物信息失败")
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 @app.delete("/api/lost-items/{item_id}")
 def delete_lost_item(item_id: int, request: Request):
@@ -760,7 +764,7 @@ def delete_lost_item(item_id: int, request: Request):
         raise HTTPException(status_code=400, detail="删除失物信息失败")
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 @app.get("/api/search")
 def search_lost_items(
@@ -791,7 +795,7 @@ def search_lost_items(
     cur.execute(search_query, params)
     items = cur.fetchall()
     cur.close()
-    conn.close()
+    release_db_connection(conn)
     
     return {"results": [serialize_row(item) for item in items]}
 
@@ -822,7 +826,7 @@ def semantic_search(
         return {"results": [serialize_row(item) for item in items]}
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 @app.get("/api/stats")
@@ -843,7 +847,7 @@ def get_stats():
     user_count = cur.fetchone()[0]
     
     cur.close()
-    conn.close()
+    release_db_connection(conn)
     
     return {
         "total_items": total_count,

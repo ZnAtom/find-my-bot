@@ -12,6 +12,8 @@ import psycopg2.extras
 from dotenv import load_dotenv
 from fastapi import HTTPException, Request
 
+from db import get_db_connection, release_db_connection
+
 # 自动加载项目根目录的 .env 文件
 _dotenv_path = Path(__file__).resolve().parent.parent / ".env"
 if _dotenv_path.exists():
@@ -39,13 +41,7 @@ CSRF_TRUSTED_ORIGINS = {
     if origin.strip()
 }
 
-DB_CONFIG = {
-    "dbname": os.environ.get("DB_NAME", "lostfound"),
-    "user": os.environ.get("DB_USER", "appuser"),
-    "password": os.environ.get("DB_PASSWORD", "password"),
-    "host": os.environ.get("DB_HOST", "localhost"),
-    "port": os.environ.get("DB_PORT", "5432"),
-}
+
 
 
 def ensure_auth_config():
@@ -64,11 +60,7 @@ def ensure_auth_config():
         raise HTTPException(status_code=500, detail="JWT_SECRET 过弱，请使用至少 32 字符的随机密钥")
 
 
-def get_db_connection():
-    try:
-        return psycopg2.connect(**DB_CONFIG)
-    except psycopg2.OperationalError:
-        raise HTTPException(status_code=503, detail="数据库连接失败，请检查 DB_HOST/DB_PORT 和 PostgreSQL 服务")
+
 
 
 def make_login_url(state: str) -> str:
@@ -212,7 +204,7 @@ def get_or_create_user(userinfo: dict) -> dict:
         raise HTTPException(status_code=409, detail="本地用户创建失败：学号或 Casdoor 账号已存在")
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 def create_session_token(user_id: int) -> str:
@@ -251,7 +243,7 @@ def get_current_user(request: Request) -> dict:
         return _serialize_user(user)
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 def get_optional_user(request: Request) -> Optional[dict]:
@@ -286,7 +278,7 @@ def assert_owner_or_admin(item_id: int, user: dict):
             raise HTTPException(status_code=403, detail="只能操作自己发布的物品")
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn)
 
 
 def new_state() -> str:

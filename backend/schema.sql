@@ -41,8 +41,8 @@ CREATE TABLE IF NOT EXISTS match_records (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- pgvector 0.8.x 索引维度上限 2000，Qwen3-VL 实际输出为 1536，如果数据量大可以考虑放开以下索引注释：
--- CREATE INDEX idx_lost_items_vector ON lost_items USING hnsw (vector vector_cosine_ops);
+-- 开启 HNSW 高维向量索引，加速匹配效率
+CREATE INDEX idx_lost_items_vector ON lost_items USING hnsw (vector vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_lost_items_status ON lost_items(status);
 CREATE INDEX IF NOT EXISTS idx_lost_items_type ON lost_items(item_type);
 CREATE INDEX IF NOT EXISTS idx_lost_items_user_id ON lost_items(user_id);
