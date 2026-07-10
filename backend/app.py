@@ -13,6 +13,7 @@ from urllib.parse import unquote, urlparse
 from auth import (
     COOKIE_SECURE,
     NEXT_COOKIE,
+    OAUTH_STATE_EXPIRE_SECONDS,
     SESSION_COOKIE,
     STATE_COOKIE,
     assert_owner_or_admin,
@@ -142,7 +143,7 @@ def auth_login(next: Optional[str] = "/"):
     response.set_cookie(
         STATE_COOKIE,
         state,
-        max_age=600,
+        max_age=OAUTH_STATE_EXPIRE_SECONDS,
         httponly=True,
         secure=COOKIE_SECURE,
         samesite="lax",
@@ -150,7 +151,7 @@ def auth_login(next: Optional[str] = "/"):
     response.set_cookie(
         NEXT_COOKIE,
         next if next and next.startswith("/") and not next.startswith("//") else "/",
-        max_age=600,
+        max_age=OAUTH_STATE_EXPIRE_SECONDS,
         httponly=True,
         secure=COOKIE_SECURE,
         samesite="lax",
@@ -162,7 +163,7 @@ def auth_login(next: Optional[str] = "/"):
 async def auth_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None):
     expected_state = request.cookies.get(STATE_COOKIE)
     if not code or not state or not expected_state or state != expected_state:
-        raise HTTPException(status_code=400, detail="OAuth 回调状态无效")
+        return RedirectResponse(safe_frontend_redirect("/?auth_error=oauth_state_invalid"), status_code=302)
 
     token_payload = await exchange_code_for_token(code)
     userinfo = await get_casdoor_userinfo(token_payload["access_token"])

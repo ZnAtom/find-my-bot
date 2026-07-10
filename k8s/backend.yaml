@@ -70,6 +70,8 @@ spec:
               value: "https://foundit.geekpie.club"
             - name: AUTH_COOKIE_SECURE
               value: "1"
+            - name: OAUTH_STATE_EXPIRE_SECONDS
+              value: "1800"
             - name: CORS_ORIGINS
               value: "https://foundit.geekpie.club"
             - name: CSRF_TRUSTED_ORIGINS

@@ -31,6 +31,7 @@ STATE_COOKIE = os.environ.get("STATE_COOKIE_NAME", "foundit_oauth_state")
 NEXT_COOKIE = os.environ.get("NEXT_COOKIE_NAME", "foundit_oauth_next")
 COOKIE_SECURE = os.environ.get("AUTH_COOKIE_SECURE", "0") == "1"
 ACCESS_TOKEN_EXPIRE_HOURS = int(os.environ.get("ACCESS_TOKEN_EXPIRE_HOURS", "24"))
+OAUTH_STATE_EXPIRE_SECONDS = int(os.environ.get("OAUTH_STATE_EXPIRE_SECONDS", "1800"))
 WEAK_JWT_SECRETS = {"dev-change-me", "change-me", "changeme", "secret", "password"}
 CSRF_TRUSTED_ORIGINS = {
     origin.strip().rstrip("/")
