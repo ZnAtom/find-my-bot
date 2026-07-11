@@ -280,9 +280,17 @@ const formatDate = (dateStr) => {
 <style scoped>
 .lost-list-page {
   padding: 40px 20px;
+  min-height: calc(100vh - var(--header-height));
+}
+
+/* 内部内容区块限制宽度并居中，与首页布局保持一致 */
+.lost-list-page .page-header,
+.lost-list-page .filter-panel,
+.lost-list-page .result-hint,
+.lost-list-page .items-container,
+.lost-list-page .pagination-container {
   max-width: 1200px;
   margin: 0 auto;
-  min-height: calc(100vh - var(--header-height));
 }
 
 .page-header {
