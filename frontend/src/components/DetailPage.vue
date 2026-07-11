@@ -76,10 +76,10 @@
         <div class="detail-info">
           <div class="info-header">
             <div class="badges">
-              <span :class="['status-badge', item.status]">
-                {{ item.status === 'pending' ? '🔍 待解决' : '✅ 已解决' }}
+              <span :class="['status-badge', getStatusClass(item)]">
+                {{ getStatusText(item) }}
               </span>
-              <span class="type-badge">{{ item.post_type === 'lost' ? '寻物' : '招领' }}</span>
+              <span class="type-badge">{{ getDirectionText(item) }}</span>
             </div>
             <h1 class="item-title">{{ item.item_name }}</h1>
             <div class="time-meta">发布于 {{ formatDate(item.created_at) }}</div>
@@ -87,9 +87,9 @@
 
           <!-- 操作区 -->
           <div class="action-card glass-card" v-if="userStore.isAuthenticated">
-            <template v-if="item.status === 'pending'">
+            <template v-if="item.status === 'active'">
               <el-button v-if="canManageItem" type="success" size="large" @click="handleMarkFound" :loading="actionLoading" class="action-btn" round>
-                <el-icon><CircleCheck /></el-icon> 标记为已解决
+                <el-icon><CircleCheck /></el-icon> 标记为已找回
               </el-button>
               <el-button type="primary" size="large" plain @click="handleClaim" :loading="actionLoading" class="action-btn" round>
                 <el-icon><Star /></el-icon> 联系发布者
@@ -97,7 +97,7 @@
             </template>
             <template v-else>
               <el-button v-if="canManageItem" type="warning" size="large" @click="handleMarkLost" :loading="actionLoading" class="action-btn" round>
-                <el-icon><WarningFilled /></el-icon> 重新标记为待解决
+                <el-icon><WarningFilled /></el-icon> 重新加入匹配池
               </el-button>
             </template>
           </div>
@@ -264,6 +264,20 @@ const canManageItem = computed(() => {
   return userStore.isAdmin || item.value.user_id === userStore.user?.id
 })
 
+const getStatusClass = (target) => {
+  if (target.status === 'recovered') return 'recovered'
+  if (target.status === 'expired') return 'expired'
+  return target.direction === 'found' ? 'found' : 'lost'
+}
+
+const getStatusText = (target) => {
+  if (target.status === 'recovered') return '✅ 已找回'
+  if (target.status === 'expired') return '⌛ 过期'
+  return target.direction === 'found' ? '📢 找主' : '🔍 找物'
+}
+
+const getDirectionText = (target) => target.direction === 'found' ? '找主' : '找物'
+
 onMounted(() => {
   loadItem()
 })
@@ -319,9 +333,9 @@ const handleMarkFound = async () => {
 
   actionLoading.value = true
   try {
-    await lostItemsApi.update(item.value.id, { status: 'resolved' })
-    item.value.status = 'resolved'
-    ElMessage.success('已成功标记为"已解决"')
+    await lostItemsApi.update(item.value.id, { status: 'recovered' })
+    item.value.status = 'recovered'
+    ElMessage.success('已成功标记为"已找回"')
   } catch (e) {
     ElMessage.error('操作失败')
   } finally {
@@ -331,16 +345,16 @@ const handleMarkFound = async () => {
 
 const handleMarkLost = async () => {
   try {
-    await ElMessageBox.confirm('确认将该物品重新标记为"待找回"？', '操作确认', { 
+    await ElMessageBox.confirm('确认将该物品重新加入匹配池？', '操作确认', {
       type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消', center: true
     })
   } catch { return }
 
   actionLoading.value = true
   try {
-    await lostItemsApi.update(item.value.id, { status: 'pending' })
-    item.value.status = 'pending'
-    ElMessage.success('已标记为"待解决"')
+    await lostItemsApi.update(item.value.id, { status: 'active' })
+    item.value.status = 'active'
+    ElMessage.success('已重新加入匹配池')
   } catch (e) {
     ElMessage.error('操作失败')
   } finally {
@@ -540,6 +554,14 @@ const simColor = (score) => {
 .status-badge.found {
   background: rgba(16, 185, 129, 0.1);
   color: var(--success-color);
+}
+.status-badge.recovered {
+  background: rgba(107, 114, 128, 0.12);
+  color: var(--text-secondary);
+}
+.status-badge.expired {
+  background: rgba(120, 113, 108, 0.12);
+  color: #78716c;
 }
 
 .type-badge {

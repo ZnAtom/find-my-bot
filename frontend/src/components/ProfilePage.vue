@@ -57,8 +57,9 @@
               <div class="toolbar-actions">
                 <el-select v-model="statusFilter" placeholder="全部状态" clearable @change="handleStatusChange">
                   <el-option label="全部状态" value="" />
-                  <el-option label="待解决" value="pending" />
-                  <el-option label="已解决" value="resolved" />
+                  <el-option label="匹配中" value="active" />
+                  <el-option label="已找回" value="recovered" />
+                  <el-option label="过期" value="expired" />
                 </el-select>
                 <el-button :icon="Refresh" circle @click="loadItems" />
               </div>
@@ -98,8 +99,8 @@
               </el-table-column>
               <el-table-column label="状态" width="120">
                 <template #default="scope">
-                  <el-tag :type="scope.row.status === 'resolved' ? 'success' : 'warning'" size="small">
-                    {{ scope.row.status === 'resolved' ? '已解决' : '待解决' }}
+                  <el-tag :type="statusTagType(scope.row.status)" size="small">
+                    {{ statusText(scope.row.status, scope.row.direction) }}
                   </el-tag>
                 </template>
               </el-table-column>
@@ -111,7 +112,7 @@
                   <el-button type="primary" link @click="goDetail(scope.row.id)">查看</el-button>
                   <el-button type="primary" link @click="openEdit(scope.row)">编辑</el-button>
                   <el-button
-                    v-if="scope.row.status !== 'resolved'"
+                    v-if="scope.row.status === 'active'"
                     type="success"
                     link
                     @click="markFound(scope.row.id)"
@@ -216,15 +217,16 @@
           <el-input v-model="editForm.description" type="textarea" :rows="4" />
         </el-form-item>
         <el-form-item label="信息类型">
-          <el-radio-group v-model="editForm.post_type">
+          <el-radio-group v-model="editForm.direction">
             <el-radio-button value="lost">寻物</el-radio-button>
             <el-radio-button value="found">招领</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="editForm.status">
-            <el-radio-button value="pending">待解决</el-radio-button>
-            <el-radio-button value="resolved">已解决</el-radio-button>
+            <el-radio-button value="active">匹配中</el-radio-button>
+            <el-radio-button value="recovered">已找回</el-radio-button>
+            <el-radio-button value="expired">过期</el-radio-button>
           </el-radio-group>
         </el-form-item>
       </el-form>
@@ -284,9 +286,9 @@ const editForm = reactive({
   id: null,
   item_name: '',
   item_type: '',
-  post_type: 'lost',
+  direction: 'lost',
   description: '',
-  status: 'pending',
+  status: 'active',
 })
 
 const profileRules = {
@@ -303,6 +305,18 @@ const completion = computed(() => {
   const fields = [user.value?.name, user.value?.email, user.value?.phone, user.value?.qq]
   return Math.round((fields.filter(Boolean).length / fields.length) * 100)
 })
+
+const statusText = (status, direction) => {
+  if (status === 'recovered') return '已找回'
+  if (status === 'expired') return '过期'
+  return direction === 'found' ? '找主中' : '找物中'
+}
+
+const statusTagType = (status) => {
+  if (status === 'recovered') return 'success'
+  if (status === 'expired') return 'info'
+  return 'warning'
+}
 
 onMounted(async () => {
   loading.value = true
@@ -387,9 +401,9 @@ const openEdit = (row) => {
   editForm.id = row.id
   editForm.item_name = row.item_name
   editForm.item_type = row.item_type || ''
-  editForm.post_type = row.post_type || 'lost'
+  editForm.direction = row.direction || 'lost'
   editForm.description = row.description || ''
-  editForm.status = row.status || 'pending'
+  editForm.status = row.status || 'active'
   editDialogVisible.value = true
 }
 
@@ -399,7 +413,7 @@ const saveItem = async () => {
     await lostItemsApi.update(editForm.id, {
       item_name: editForm.item_name,
       item_type: editForm.item_type,
-      post_type: editForm.post_type,
+      direction: editForm.direction,
       description: editForm.description,
       status: editForm.status,
     })
@@ -416,7 +430,7 @@ const saveItem = async () => {
 
 const markFound = async (id) => {
   try {
-    await lostItemsApi.update(id, { status: 'resolved' })
+    await lostItemsApi.update(id, { status: 'recovered' })
     ElMessage.success('已标记为解决')
     await loadItems()
   } catch (e) {

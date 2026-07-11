@@ -26,21 +26,21 @@
             <el-icon size="28" color="var(--brand-primary)"><Box /></el-icon>
             <div class="stat-info">
               <span class="stat-value">{{ stats.total_items || 0 }}</span>
-              <span class="stat-label">总失物</span>
+              <span class="stat-label">总信息</span>
             </div>
           </div>
           <div class="stat-card">
             <el-icon size="28" color="var(--danger-color)"><HelpFilled /></el-icon>
             <div class="stat-info">
               <span class="stat-value">{{ stats.lost_count || 0 }}</span>
-              <span class="stat-label">待找回</span>
+              <span class="stat-label">找物中</span>
             </div>
           </div>
           <div class="stat-card">
             <el-icon size="28" color="var(--success-color)"><CircleCheck /></el-icon>
             <div class="stat-info">
               <span class="stat-value">{{ stats.found_count || 0 }}</span>
-              <span class="stat-label">已找回</span>
+              <span class="stat-label">找主中</span>
             </div>
           </div>
           <div class="stat-card">
@@ -99,7 +99,7 @@
             </div>
             <div class="card-content">
               <div class="card-meta">
-                <span class="item-type">{{ item.post_type === 'lost' ? '寻物' : '招领' }}</span>
+                <span class="item-type">{{ getDirectionText(item) }}</span>
                 <span class="time-ago">{{ formatDate(item.created_at) }}</span>
               </div>
               <h3 class="card-title">{{ item.item_name }}</h3>
@@ -162,14 +162,18 @@ const loadLatestItems = async () => {
 }
 
 const getStatusClass = (item) => {
-  if (item.status === 'resolved') return 'resolved'
-  return item.post_type === 'lost' ? 'lost' : 'found'
+  if (item.status === 'recovered') return 'recovered'
+  if (item.status === 'expired') return 'expired'
+  return item.direction === 'found' ? 'found' : 'lost'
 }
 
 const getStatusText = (item) => {
-  if (item.status === 'resolved') return '已解决'
-  return item.post_type === 'lost' ? '待找回' : '招领'
+  if (item.status === 'recovered') return '已找回'
+  if (item.status === 'expired') return '过期'
+  return item.direction === 'found' ? '找主' : '找物'
 }
+
+const getDirectionText = (item) => item.direction === 'found' ? '找主' : '找物'
 
 const goDetail = (id) => {
   router.push({ name: 'detail', params: { id } })
@@ -375,8 +379,13 @@ const formatDate = (dateStr) => {
   color: white;
 }
 
-.status-badge.resolved {
+.status-badge.recovered {
   background: rgba(107, 114, 128, 0.9);
+  color: white;
+}
+
+.status-badge.expired {
+  background: rgba(120, 113, 108, 0.9);
   color: white;
 }
 

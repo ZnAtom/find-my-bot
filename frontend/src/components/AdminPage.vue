@@ -35,11 +35,14 @@
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="item_name" label="物品名称" />
         <el-table-column prop="item_type" label="类型" width="100" />
+        <el-table-column label="方向" width="90">
+          <template #default="scope">{{ directionText(scope.row.direction) }}</template>
+        </el-table-column>
         <el-table-column prop="location" label="地点" />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="scope">
-            <el-tag :type="scope.row.status === 'pending' ? 'danger' : 'success'">
-              {{ scope.row.status === 'pending' ? '待解决' : '已解决' }}
+            <el-tag :type="statusTagType(scope.row.status)">
+              {{ statusText(scope.row.status) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -64,7 +67,7 @@
             <el-button type="text" size="small" @click="editItem(scope.row)">编辑</el-button>
             <el-button type="text" size="small" @click="deleteItem(scope.row.id)" style="color: #F56C6C">删除</el-button>
             <el-button
-              v-if="scope.row.status === 'pending'"
+              v-if="scope.row.status === 'active'"
               type="text" size="small" @click="markFound(scope.row.id)"
               style="color: #67C23A"
             >
@@ -144,7 +147,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="信息类型">
-          <el-select v-model="editForm.post_type">
+          <el-select v-model="editForm.direction">
             <el-option label="寻物" value="lost" />
             <el-option label="招领" value="found" />
           </el-select>
@@ -154,8 +157,9 @@
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="editForm.status">
-            <el-option label="待解决" value="pending" />
-            <el-option label="已解决" value="resolved" />
+            <el-option label="匹配中" value="active" />
+            <el-option label="已找回" value="recovered" />
+            <el-option label="过期" value="expired" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -190,17 +194,31 @@ const editForm = reactive({
   id: null,
   item_name: '',
   item_type: '',
-  post_type: 'lost',
+  direction: 'lost',
   description: '',
-  status: 'pending',
+  status: 'active',
 })
 
 const statCards = computed(() => [
-  { label: '待找回', value: stats.value.lost_count || 0, icon: HelpFilled, cls: 'lost' },
-  { label: '已找回', value: stats.value.found_count || 0, icon: CircleCheck, cls: 'found' },
-  { label: '总失物', value: stats.value.total_items || 0, icon: Box, cls: 'total' },
+  { label: '找物中', value: stats.value.lost_count || 0, icon: HelpFilled, cls: 'lost' },
+  { label: '找主中', value: stats.value.found_count || 0, icon: CircleCheck, cls: 'found' },
+  { label: '已找回', value: stats.value.recovered_count || 0, icon: Box, cls: 'total' },
   { label: '用户数', value: stats.value.user_count || 0, icon: User, cls: 'user' },
 ])
+
+const directionText = (direction) => direction === 'found' ? '找主' : '找物'
+
+const statusText = (status) => {
+  if (status === 'recovered') return '已找回'
+  if (status === 'expired') return '过期'
+  return '匹配中'
+}
+
+const statusTagType = (status) => {
+  if (status === 'recovered') return 'success'
+  if (status === 'expired') return 'info'
+  return 'warning'
+}
 
 onMounted(() => {
   if (!userStore.isAdminView) {
@@ -271,7 +289,7 @@ const editItem = (row) => {
   editForm.id = row.id
   editForm.item_name = row.item_name
   editForm.item_type = row.item_type
-  editForm.post_type = row.post_type
+  editForm.direction = row.direction || 'lost'
   editForm.description = row.description
   editForm.status = row.status
   dialogVisible.value = true
@@ -282,7 +300,7 @@ const saveEdit = async () => {
     await lostItemsApi.update(editForm.id, {
       item_name: editForm.item_name,
       item_type: editForm.item_type,
-      post_type: editForm.post_type,
+      direction: editForm.direction,
       description: editForm.description,
       status: editForm.status,
     })
@@ -315,7 +333,7 @@ const deleteItem = async (id) => {
 
 const markFound = async (id) => {
   try {
-    await lostItemsApi.update(id, { status: 'found' })
+    await lostItemsApi.update(id, { status: 'recovered' })
     ElMessage.success('标记成功')
     loadAll()
   } catch (e) {

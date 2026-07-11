@@ -12,8 +12,8 @@
         <el-form :model="formData" :rules="rules" ref="formRef" label-position="top">
           <!-- 第一步：基础信息 -->
           <div v-show="currentStep === 0" class="step-content">
-            <el-form-item label="信息类型" prop="status">
-              <el-radio-group v-model="formData.post_type" size="large" class="type-selector">
+            <el-form-item label="信息类型" prop="direction">
+              <el-radio-group v-model="formData.direction" size="large" class="type-selector">
                 <el-radio-button value="lost">
                   <div class="radio-content">
                     <el-icon><Warning /></el-icon>
@@ -195,7 +195,7 @@ const formData = reactive({
   description: '',
   location: '',
   lost_time: '',
-  post_type: 'lost',
+  direction: 'lost',
   image_url: '',
   contact_person: '',
   contact_phone: '',
@@ -310,8 +310,7 @@ const confirmSubmit = async () => {
   finalSubmitting.value = true
   try {
     const payload = getPayload()
-    // For new items, we set status to pending in backend automatically,
-    // but just in case we let backend handle default status.
+    // New items enter the active matching pool by default.
     const res = await lostItemsApi.create(payload)
     if (res.status === 200) {
       ElMessage.success('信息发布成功！AI 已记录您的物品特征。')

@@ -33,8 +33,10 @@
           <span class="filter-label">状态:</span>
           <el-radio-group v-model="filterStatus" @change="handleFilterChange">
             <el-radio-button value="">全部</el-radio-button>
-            <el-radio-button value="pending">🔍 待匹配</el-radio-button>
-            <el-radio-button value="resolved">✅ 已找回</el-radio-button>
+            <el-radio-button value="lost">找物</el-radio-button>
+            <el-radio-button value="found">找主</el-radio-button>
+            <el-radio-button value="recovered">已找回</el-radio-button>
+            <el-radio-button value="expired">过期</el-radio-button>
           </el-radio-group>
         </div>
         
@@ -79,7 +81,7 @@
             
             <div class="card-content">
               <div class="card-meta">
-                <span class="item-type">{{ item.post_type === 'lost' ? '寻物' : '招领' }}</span>
+                <span class="item-type">{{ getDirectionText(item) }}</span>
                 <span class="time-ago">{{ formatDate(item.created_at) }}</span>
               </div>
               
@@ -163,7 +165,7 @@ const loadItems = async () => {
   try {
     const params = { page: page.value, page_size: pageSize.value }
     if (filterType.value) params.item_type = filterType.value
-    if (filterStatus.value) params.status = filterStatus.value
+    Object.assign(params, buildStateParams())
     const res = await lostItemsApi.getAll(params)
     items.value = res.data.items || []
     total.value = res.data.total || 0
@@ -176,23 +178,34 @@ const loadItems = async () => {
 }
 
 const handleSearch = async () => {
-  if (!searchQuery.value.trim() && !filterType.value && !filterStatus.value) {
+  const keyword = searchQuery.value.trim()
+  if (!keyword) {
     loadItems()
     return
   }
+
   loading.value = true
   searched.value = true
   page.value = 1
   try {
-    if (searchMode.value === 'semantic' && searchQuery.value.trim()) {
-      const res = await lostItemsApi.semanticSearch({ query: searchQuery.value, limit: pageSize.value })
-      items.value = res.data.results || []
-      total.value = res.data.results?.length || 0
+    const filterParams = {
+      item_type: filterType.value || undefined,
+      ...buildStateParams(),
+    }
+
+    if (searchMode.value === 'semantic') {
+      const res = await lostItemsApi.semanticSearch({
+        query: keyword,
+        ...filterParams,
+        limit: 100,
+      })
+      const filteredResults = filterSemanticResults(res.data.results || [])
+      total.value = filteredResults.length
+      items.value = filteredResults.slice(0, pageSize.value)
     } else {
       const res = await lostItemsApi.search({
-        query: searchQuery.value || undefined,
-        item_type: filterType.value || undefined,
-        status: filterStatus.value || undefined,
+        query: keyword,
+        ...filterParams,
         limit: 100, // 关键字搜索目前后端未做分页，前端获取尽量多的然后截断
       })
       // 简单前端分页处理
@@ -222,15 +235,48 @@ const resetSearch = () => {
   loadItems()
 }
 
+const buildStateParams = () => {
+  if (filterStatus.value === 'lost') return { direction: 'lost', status: 'active' }
+  if (filterStatus.value === 'found') return { direction: 'found', status: 'active' }
+  if (filterStatus.value === 'recovered') return { status: 'recovered' }
+  if (filterStatus.value === 'expired') return { status: 'expired' }
+  return {}
+}
+
+const filterSemanticResults = (results) => {
+  return results.filter(item => {
+    if (filterType.value && item.item_type !== filterType.value) return false
+
+    const direction = item.direction || item.post_type
+    if (filterStatus.value === 'lost') {
+      return direction === 'lost' && item.status === 'active'
+    }
+    if (filterStatus.value === 'found') {
+      return direction === 'found' && item.status === 'active'
+    }
+    if (filterStatus.value === 'recovered') {
+      return item.status === 'recovered'
+    }
+    if (filterStatus.value === 'expired') {
+      return item.status === 'expired'
+    }
+    return true
+  })
+}
+
 const getStatusClass = (item) => {
-  if (item.status === 'resolved') return 'resolved'
-  return item.post_type === 'lost' ? 'lost' : 'found'
+  if (item.status === 'recovered') return 'recovered'
+  if (item.status === 'expired') return 'expired'
+  return item.direction === 'found' ? 'found' : 'lost'
 }
 
 const getStatusText = (item) => {
-  if (item.status === 'resolved') return '已解决'
-  return item.post_type === 'lost' ? '寻物' : '招领'
+  if (item.status === 'recovered') return '已找回'
+  if (item.status === 'expired') return '过期'
+  return item.direction === 'found' ? '找主' : '找物'
 }
+
+const getDirectionText = (item) => item.direction === 'found' ? '找主' : '找物'
 
 const goDetail = (id) => { router.push({ name: 'detail', params: { id } }) }
 
@@ -442,7 +488,8 @@ const formatDate = (dateStr) => {
 }
 .status-badge.lost { background: rgba(239, 68, 68, 0.9); color: white; }
 .status-badge.found { background: rgba(16, 185, 129, 0.9); color: white; }
-.status-badge.resolved { background: rgba(107, 114, 128, 0.9); color: white; }
+.status-badge.recovered { background: rgba(107, 114, 128, 0.9); color: white; }
+.status-badge.expired { background: rgba(120, 113, 108, 0.9); color: white; }
 
 .card-content {
   padding: 20px;

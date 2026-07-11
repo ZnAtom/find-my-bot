@@ -65,6 +65,7 @@ STATUS_ALIASES = {
     "pending": "active",
     "待匹配": "active",
     "recovered": "recovered",
+    "resolved": "recovered",
     "matched": "recovered",
     "closed": "recovered",
     "已找回": "recovered",
@@ -118,7 +119,7 @@ def search_items(query: str, status: Optional[str] = None, limit: int = 5) -> Di
     """
     搜索失物招领信息
     :param query: 搜索关键词
-    :param status: 状态过滤（lost/found）
+    :param status: 状态过滤；兼容 lost/found 表示找物/找主，active/recovered/expired 表示生命周期
     :param limit: 返回数量限制
     :return: 搜索结果
     """
@@ -204,7 +205,7 @@ def search_items_keyword(query: str, status: Optional[str] = None, limit: int = 
 def create_lost(item_name: str, item_type: str, location: str, 
                 description: Optional[str] = None, lost_time: Optional[str] = None,
                 contact_person: str = "匿名", contact_phone: Optional[str] = None,
-                contact_qq: Optional[str] = None, status: str = "lost",
+                contact_qq: Optional[str] = None, status: Optional[str] = None,
                 direction: Optional[str] = None) -> Dict[str, Any]:
     """
     创建失物招领信息
@@ -216,7 +217,8 @@ def create_lost(item_name: str, item_type: str, location: str,
     :param contact_person: 联系人
     :param contact_phone: 联系电话
     :param contact_qq: 联系QQ
-    :param status: 状态（lost=丢失，found=捡到）
+    :param direction: 发布方向（lost=找物，found=找主）
+    :param status: 生命周期状态（active/recovered/expired），兼容旧值 lost/found/pending/resolved
     :return: 创建结果
     """
     conn = get_db_connection()
@@ -324,7 +326,7 @@ def get_banli(item_id: int) -> Dict[str, Any]:
         direction = item_dict.get("direction", "")
         status = item_dict.get("status", "")
         if status == "active" and direction == "lost":
-            progress = "待找回：已登记，等待匹配..."
+            progress = "找物中：已登记，等待匹配..."
         elif status == "active" and direction == "found":
             progress = "找主中：已登记，等待失主联系..."
         elif status == "recovered":
@@ -376,7 +378,8 @@ TOOL_DESCRIPTIONS = {
             "contact_person": {"type": "string", "description": "联系人姓名，可选"},
             "contact_phone": {"type": "string", "description": "联系电话，可选"},
             "contact_qq": {"type": "string", "description": "联系QQ，可选"},
-            "status": {"type": "string", "description": "兼容旧值：lost(我丢了)或found(我捡到了)，默认lost"}
+            "direction": {"type": "string", "description": "发布方向：lost(我丢了)或found(我捡到了)，默认lost"},
+            "status": {"type": "string", "description": "可选，生命周期状态：active/recovered/expired"}
         }
     },
     "notify_match": {
@@ -491,6 +494,16 @@ async def classify_intent(user_message: str) -> str:
 
 # ========== RAG 检索增强 ==========
 
+def _format_item_state(item: Dict[str, Any]) -> str:
+    status = item.get("status")
+    direction = item.get("direction")
+    if status == "recovered":
+        return "已找回"
+    if status == "expired":
+        return "已过期"
+    return "找主中" if direction == "found" else "找物中"
+
+
 def build_rag_context(query: str, top_k: int = 5) -> str:
     """
     构建 RAG 上下文：从数据库检索相似记录
@@ -515,7 +528,7 @@ def build_rag_context(query: str, top_k: int = 5) -> str:
                 f"{i}. 物品名称: {item.get('item_name', '')}{sim_str}\n"
                 f"   类型: {item.get('item_type', '')}\n"
                 f"   地点: {item.get('location', '')}\n"
-                f"   状态: {'丢失' if item.get('status') == 'lost' else '已找回'}\n"
+                f"   状态: {_format_item_state(item)}\n"
                 f"   描述: {item.get('description', '')[:50]}..." if item.get('description') else ""
             )
         
@@ -587,14 +600,14 @@ async def run_agent(user_message: str, max_tool_calls: int = 3) -> Dict[str, Any
     
     elif intent in ["report_lost", "report_found"]:
         # 挂失/捡到：让模型提取关键信息，然后调用创建工具
-        status = "lost" if intent == "report_lost" else "found"
+        direction = "lost" if intent == "report_lost" else "found"
         
         extract_prompt = f"""
 你是一个信息提取助手。请从用户的消息中提取以下信息：
 物品名称、物品类型、地点、描述、时间、联系人、联系电话、联系QQ
 
 用户消息：{user_message}
-这是{'丢失' if status == 'lost' else '捡到'}信息。
+这是{'丢失' if direction == 'lost' else '捡到'}信息。
 
 请以 JSON 格式输出，字段包括：item_name, item_type, location, description, lost_time, contact_person, contact_phone, contact_qq
 如果某个字段无法提取，请设为 null。
@@ -634,7 +647,7 @@ async def run_agent(user_message: str, max_tool_calls: int = 3) -> Dict[str, Any
                 contact_person=data.get("contact_person", "匿名"),
                 contact_phone=data.get("contact_phone"),
                 contact_qq=data.get("contact_qq"),
-                status=status
+                direction=direction
             )
             
             if create_result["success"]:
