@@ -2,11 +2,10 @@
   <div class="home-page">
     <!-- Hero -->
     <div class="hero-section">
-      <div class="hero-bg-animated"></div>
       <div class="hero-content">
         <h1 class="hero-title">校园失物招领平台</h1>
         <p class="hero-subtitle">智能匹配 · 快速找回 · 服务师生</p>
-        <div class="search-box glass-card">
+        <div class="search-box">
           <el-input
             v-model="searchQuery"
             placeholder="搜索失物、招领信息…"
@@ -23,28 +22,28 @@
           </el-button>
         </div>
         <div class="quick-stats">
-          <div class="stat-card glass-card">
+          <div class="stat-card">
             <el-icon size="28" color="var(--brand-primary)"><Box /></el-icon>
             <div class="stat-info">
               <span class="stat-value">{{ stats.total_items || 0 }}</span>
               <span class="stat-label">总失物</span>
             </div>
           </div>
-          <div class="stat-card glass-card">
+          <div class="stat-card">
             <el-icon size="28" color="var(--danger-color)"><HelpFilled /></el-icon>
             <div class="stat-info">
               <span class="stat-value">{{ stats.lost_count || 0 }}</span>
               <span class="stat-label">待找回</span>
             </div>
           </div>
-          <div class="stat-card glass-card">
+          <div class="stat-card">
             <el-icon size="28" color="var(--success-color)"><CircleCheck /></el-icon>
             <div class="stat-info">
               <span class="stat-value">{{ stats.found_count || 0 }}</span>
               <span class="stat-label">已找回</span>
             </div>
           </div>
-          <div class="stat-card glass-card">
+          <div class="stat-card">
             <el-icon size="28" color="var(--warning-color)"><User /></el-icon>
             <div class="stat-info">
               <span class="stat-value">{{ stats.user_count || 0 }}</span>
@@ -100,7 +99,7 @@
             </div>
             <div class="card-content">
               <div class="card-meta">
-                <span class="item-type">{{ item.item_type || '未分类' }}</span>
+                <span class="item-type">{{ item.post_type === 'lost' ? '寻物' : '招领' }}</span>
                 <span class="time-ago">{{ formatDate(item.created_at) }}</span>
               </div>
               <h3 class="card-title">{{ item.item_name }}</h3>
@@ -115,7 +114,7 @@
         </el-col>
       </el-row>
 
-      <div v-else class="empty-state glass-card">
+      <div v-else class="empty-state">
         <el-empty description="暂时还没有失物信息哦，去发布第一条吧！">
           <el-button type="primary" round size="large" @click="router.push({ name: 'create' })">立即发布</el-button>
         </el-empty>
@@ -163,13 +162,13 @@ const loadLatestItems = async () => {
 }
 
 const getStatusClass = (item) => {
-  if (item.status === 'found') return 'resolved'
-  return item.status === 'lost' ? 'lost' : 'found'
+  if (item.status === 'resolved') return 'resolved'
+  return item.post_type === 'lost' ? 'lost' : 'found'
 }
 
 const getStatusText = (item) => {
-  if (item.status === 'found') return '已找回'
-  return item.status === 'lost' ? '待找回' : '招领'
+  if (item.status === 'resolved') return '已解决'
+  return item.post_type === 'lost' ? '待找回' : '招领'
 }
 
 const goDetail = (id) => {
@@ -202,21 +201,6 @@ const formatDate = (dateStr) => {
   background: transparent;
 }
 
-.hero-bg-animated {
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15) 0%, rgba(236, 72, 153, 0.05) 50%, transparent 100%);
-  animation: rotateBg 30s linear infinite;
-  z-index: 0;
-}
-
-@keyframes rotateBg {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
 
 .hero-content {
   position: relative;
@@ -275,25 +259,15 @@ const formatDate = (dateStr) => {
   margin-top: 80px;
   flex-wrap: wrap;
 }
-
 .stat-card {
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 20px 32px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
   min-width: 200px;
-  box-shadow: var(--glass-shadow);
-  transition: all 0.4s var(--spring-easing);
-}
-
-.stat-card:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 0 15px 30px rgba(124, 58, 237, 0.1);
-  background: var(--glass-hover-bg);
 }
 
 .stat-info {
@@ -347,24 +321,15 @@ const formatDate = (dateStr) => {
 
 /* ===== 现代卡片 ===== */
 .modern-card {
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px);
+  background: var(--surface-color);
   border-radius: var(--border-radius-lg);
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.4s var(--spring-easing);
-  box-shadow: var(--glass-shadow);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border-color);
   height: 100%;
   display: flex;
   flex-direction: column;
   margin-bottom: 24px;
-}
-
-.modern-card:hover {
-  transform: translateY(-10px);
-  box-shadow: 0 20px 40px rgba(31, 38, 135, 0.1);
-  background: var(--glass-hover-bg);
 }
 
 .card-image-wrapper {
@@ -378,11 +343,6 @@ const formatDate = (dateStr) => {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.5s ease;
-}
-
-.modern-card:hover .card-img {
-  transform: scale(1.05);
 }
 
 .card-img-placeholder {

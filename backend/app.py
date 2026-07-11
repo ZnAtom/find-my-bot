@@ -62,19 +62,19 @@ async def periodic_email_matcher():
             
             # Simple logic: check pending items against their opposite pool
             cur.execute("""
-                SELECT l.id, l.item_name, l.item_type, l.contact_person, u.email, l.vector 
+                SELECT l.id, l.item_name, l.post_type, l.contact_person, u.email, l.vector 
                 FROM lost_items l 
                 LEFT JOIN users u ON l.user_id = u.id 
                 WHERE l.status = 'pending' AND u.email IS NOT NULL AND l.vector IS NOT NULL
             """)
             items = cur.fetchall()
             for item in items:
-                target_type = "found" if item['item_type'] == "lost" else "lost"
+                target_type = "found" if item['post_type'] == "lost" else "lost"
                 # Actual vector search for matches > 0.8
                 cur.execute("""
                     SELECT id, item_name, 1 - (vector <=> %s::vector) AS similarity
                     FROM lost_items
-                    WHERE item_type = %s AND status = 'pending' AND 1 - (vector <=> %s::vector) > 0.8
+                    WHERE post_type = %s AND status = 'pending' AND 1 - (vector <=> %s::vector) > 0.8
                     ORDER BY similarity DESC LIMIT 5
                 """, (item['vector'], target_type, item['vector']))
                 matches = cur.fetchall()
@@ -351,10 +351,11 @@ class UserResponse(BaseModel):
 class LostItemCreate(BaseModel):
     item_name: str
     item_type: Optional[str] = None
+    post_type: Optional[str] = "lost"
     description: Optional[str] = None
     location: Optional[str] = None
     lost_time: Optional[str] = None
-    status: Optional[str] = "lost"
+    status: Optional[str] = "pending"
     image_url: Optional[str] = None
     contact_person: str
     contact_phone: Optional[str] = None
@@ -363,6 +364,7 @@ class LostItemCreate(BaseModel):
 class LostItemUpdate(BaseModel):
     item_name: Optional[str] = None
     item_type: Optional[str] = None
+    post_type: Optional[str] = None
     description: Optional[str] = None
     location: Optional[str] = None
     found_time: Optional[str] = None
@@ -373,6 +375,7 @@ class LostItemResponse(BaseModel):
     id: int
     item_name: str
     item_type: Optional[str] = None
+    post_type: str
     description: Optional[str] = None
     location: Optional[str] = None
     lost_time: Optional[str] = None
@@ -560,6 +563,7 @@ def update_user(user_id: int, update: UserUpdate, request: Request):
 @app.get("/api/lost-items")
 def get_lost_items(
     status: Optional[str] = None,
+    post_type: Optional[str] = None,
     item_type: Optional[str] = None,
     page: int = 1,
     page_size: int = 20
@@ -574,6 +578,9 @@ def get_lost_items(
     if status:
         where_clause += " AND status = %s"
         params.append(status)
+    if post_type:
+        where_clause += " AND post_type = %s"
+        params.append(post_type)
     if item_type:
         where_clause += " AND item_type = %s"
         params.append(item_type)
@@ -608,14 +615,14 @@ def match_check(item: MatchCheckRequest, limit: int = 5):
     if not vector:
         return {"results": []}
 
-    target_type = "found" if item.item_type == "lost" else "lost"
+    target_type = "found" if item.post_type == "lost" else "lost"
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
         cur.execute(
             """SELECT *, 1 - (vector <=> %s::vector) AS similarity
                FROM lost_items
-               WHERE vector IS NOT NULL AND item_type = %s AND status = 'pending'
+               WHERE vector IS NOT NULL AND post_type = %s AND status = 'pending'
                ORDER BY vector <=> %s::vector
                LIMIT %s""",
             (vector, target_type, vector, limit)
@@ -641,10 +648,10 @@ def create_lost_item(item: LostItemCreate, request: Request):
 
         cur.execute(
             """INSERT INTO lost_items
-               (id, item_name, item_type, description, location, lost_time, status,
+               (id, item_name, item_type, post_type, description, location, lost_time, status,
                 image_url, contact_person, contact_phone, contact_qq, user_id, vector)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
-            (next_id, item.item_name, none_if_empty(item.item_type),
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
+            (next_id, item.item_name, none_if_empty(item.item_type), none_if_empty(item.post_type) or 'lost',
              none_if_empty(item.description), none_if_empty(item.location),
              none_if_empty(item.lost_time), none_if_empty(item.status) or 'pending',
              none_if_empty(item.image_url), item.contact_person,
@@ -693,6 +700,9 @@ def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
         if item.item_type:
             update_fields.append("item_type = %s")
             params.append(item.item_type)
+        if item.post_type:
+            update_fields.append("post_type = %s")
+            params.append(item.post_type)
         if item.description:
             update_fields.append("description = %s")
             params.append(item.description)
@@ -834,10 +844,10 @@ def get_stats():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    cur.execute("SELECT COUNT(*) FROM lost_items WHERE status = 'lost'")
+    cur.execute("SELECT COUNT(*) FROM lost_items WHERE status = 'pending'")
     lost_count = cur.fetchone()[0]
     
-    cur.execute("SELECT COUNT(*) FROM lost_items WHERE status = 'found'")
+    cur.execute("SELECT COUNT(*) FROM lost_items WHERE status = 'resolved'")
     found_count = cur.fetchone()[0]
     
     cur.execute("SELECT COUNT(*) FROM lost_items")

@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS lost_items (
     location VARCHAR(200),
     lost_time TIMESTAMP,
     found_time TIMESTAMP,
-    status VARCHAR(20) DEFAULT 'lost',
+    post_type VARCHAR(20) DEFAULT 'lost',
+    status VARCHAR(20) DEFAULT 'pending',
     image_url VARCHAR(500),
     contact_person VARCHAR(100),
     contact_phone VARCHAR(20),
@@ -44,5 +45,6 @@ CREATE TABLE IF NOT EXISTS match_records (
 -- 开启 HNSW 高维向量索引，加速匹配效率
 CREATE INDEX idx_lost_items_vector ON lost_items USING hnsw (vector vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_lost_items_status ON lost_items(status);
+CREATE INDEX IF NOT EXISTS idx_lost_items_post_type ON lost_items(post_type);
 CREATE INDEX IF NOT EXISTS idx_lost_items_type ON lost_items(item_type);
 CREATE INDEX IF NOT EXISTS idx_lost_items_user_id ON lost_items(user_id);

@@ -6,7 +6,7 @@
     </div>
 
     <!-- 搜索与过滤面板 -->
-    <div class="filter-panel glass-card">
+    <div class="filter-panel">
       <div class="search-row">
         <el-input
           v-model="searchQuery"
@@ -79,7 +79,7 @@
             
             <div class="card-content">
               <div class="card-meta">
-                <span class="item-type">{{ item.item_type || '未分类' }}</span>
+                <span class="item-type">{{ item.post_type === 'lost' ? '寻物' : '招领' }}</span>
                 <span class="time-ago">{{ formatDate(item.created_at) }}</span>
               </div>
               
@@ -107,7 +107,7 @@
         </el-col>
       </el-row>
 
-      <div v-else-if="!loading && total === 0" class="empty-state glass-card">
+      <div v-else-if="!loading && total === 0" class="empty-state">
         <el-empty description="没有找到相关的物品信息">
           <el-button type="primary" round @click="resetSearch">清除搜索条件</el-button>
         </el-empty>
@@ -224,12 +224,12 @@ const resetSearch = () => {
 
 const getStatusClass = (item) => {
   if (item.status === 'resolved') return 'resolved'
-  return item.item_type === 'lost' ? 'lost' : 'found'
+  return item.post_type === 'lost' ? 'lost' : 'found'
 }
 
 const getStatusText = (item) => {
-  if (item.status === 'resolved') return '已找回'
-  return item.item_type === 'lost' ? '找物' : '找主'
+  if (item.status === 'resolved') return '已解决'
+  return item.post_type === 'lost' ? '寻物' : '招领'
 }
 
 const goDetail = (id) => { router.push({ name: 'detail', params: { id } }) }

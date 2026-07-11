@@ -77,9 +77,9 @@
           <div class="info-header">
             <div class="badges">
               <span :class="['status-badge', item.status]">
-                {{ item.status === 'lost' ? '🔍 丢失待找回' : '✅ 物品已找回' }}
+                {{ item.status === 'pending' ? '🔍 待解决' : '✅ 已解决' }}
               </span>
-              <span class="type-badge">{{ item.item_type || '未分类' }}</span>
+              <span class="type-badge">{{ item.post_type === 'lost' ? '寻物' : '招领' }}</span>
             </div>
             <h1 class="item-title">{{ item.item_name }}</h1>
             <div class="time-meta">发布于 {{ formatDate(item.created_at) }}</div>
@@ -87,17 +87,17 @@
 
           <!-- 操作区 -->
           <div class="action-card glass-card" v-if="userStore.isAuthenticated">
-            <template v-if="item.status === 'lost'">
+            <template v-if="item.status === 'pending'">
               <el-button v-if="canManageItem" type="success" size="large" @click="handleMarkFound" :loading="actionLoading" class="action-btn" round>
-                <el-icon><CircleCheck /></el-icon> 我已找回该物品
+                <el-icon><CircleCheck /></el-icon> 标记为已解决
               </el-button>
               <el-button type="primary" size="large" plain @click="handleClaim" :loading="actionLoading" class="action-btn" round>
-                <el-icon><Star /></el-icon> 认领该物品
+                <el-icon><Star /></el-icon> 联系发布者
               </el-button>
             </template>
             <template v-else>
               <el-button v-if="canManageItem" type="warning" size="large" @click="handleMarkLost" :loading="actionLoading" class="action-btn" round>
-                <el-icon><WarningFilled /></el-icon> 取消找回标记
+                <el-icon><WarningFilled /></el-icon> 重新标记为待解决
               </el-button>
             </template>
           </div>
@@ -319,9 +319,9 @@ const handleMarkFound = async () => {
 
   actionLoading.value = true
   try {
-    await lostItemsApi.update(item.value.id, { status: 'found' })
-    item.value.status = 'found'
-    ElMessage.success('已成功标记为"已找回"')
+    await lostItemsApi.update(item.value.id, { status: 'resolved' })
+    item.value.status = 'resolved'
+    ElMessage.success('已成功标记为"已解决"')
   } catch (e) {
     ElMessage.error('操作失败')
   } finally {
@@ -338,9 +338,9 @@ const handleMarkLost = async () => {
 
   actionLoading.value = true
   try {
-    await lostItemsApi.update(item.value.id, { status: 'lost' })
-    item.value.status = 'lost'
-    ElMessage.success('已标记为"待找回"')
+    await lostItemsApi.update(item.value.id, { status: 'pending' })
+    item.value.status = 'pending'
+    ElMessage.success('已标记为"待解决"')
   } catch (e) {
     ElMessage.error('操作失败')
   } finally {
@@ -503,7 +503,6 @@ const simColor = (score) => {
 .thumb.active {
   border-color: var(--brand-primary);
   opacity: 1;
-  transform: scale(1.05);
 }
 .thumb img {
   width: 100%;
@@ -653,7 +652,6 @@ const simColor = (score) => {
   transition: transform 0.2s;
 }
 .contact-row:hover {
-  transform: translateX(8px);
   background: var(--surface-color);
 }
 .contact-icon {
@@ -721,8 +719,7 @@ const simColor = (score) => {
   flex-direction: column;
 }
 .modern-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.06);
 }
 .card-img-wrap {
   height: 160px;
@@ -736,7 +733,7 @@ const simColor = (score) => {
   transition: transform 0.5s;
 }
 .modern-card:hover .card-img-wrap img {
-  transform: scale(1.08);
+  opacity: 0.9;
 }
 .img-placeholder {
   width: 100%;

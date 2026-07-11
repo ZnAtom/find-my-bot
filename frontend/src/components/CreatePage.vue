@@ -13,7 +13,7 @@
           <!-- 第一步：基础信息 -->
           <div v-show="currentStep === 0" class="step-content">
             <el-form-item label="信息类型" prop="status">
-              <el-radio-group v-model="formData.status" size="large" class="type-selector">
+              <el-radio-group v-model="formData.post_type" size="large" class="type-selector">
                 <el-radio-button value="lost">
                   <div class="radio-content">
                     <el-icon><Warning /></el-icon>
@@ -195,7 +195,7 @@ const formData = reactive({
   description: '',
   location: '',
   lost_time: '',
-  status: 'lost',
+  post_type: 'lost',
   image_url: '',
   contact_person: '',
   contact_phone: '',
@@ -368,8 +368,8 @@ const confirmSubmit = async () => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* 选项卡式单选框 */
