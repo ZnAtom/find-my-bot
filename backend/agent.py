@@ -42,8 +42,74 @@ def serialize_row(row):
     return result
 
 
+# 数据库向量列维度（需与 pgvector column 定义一致，与 app.py 保持同步）
+VECTOR_DIM = int(os.environ.get("VECTOR_DIM", "1536"))
+
+
 def _vector_str(values: list[float]) -> str:
-    return "[" + ",".join(str(v) for v in values) + "]"
+    trimmed = values[:VECTOR_DIM]
+    return "[" + ",".join(str(v) for v in trimmed) + "]"
+
+
+DIRECTION_ALIASES = {
+    "lost": "lost",
+    "find_item": "lost",
+    "找物": "lost",
+    "found": "found",
+    "find_owner": "found",
+    "找主": "found",
+}
+
+STATUS_ALIASES = {
+    "active": "active",
+    "pending": "active",
+    "待匹配": "active",
+    "recovered": "recovered",
+    "matched": "recovered",
+    "closed": "recovered",
+    "已找回": "recovered",
+    "expired": "expired",
+    "过期": "expired",
+}
+
+
+def _coerce_direction(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    return DIRECTION_ALIASES.get(value.strip())
+
+
+def _coerce_status(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    return STATUS_ALIASES.get(value.strip())
+
+
+def _resolve_create_state(direction: Optional[str], status: Optional[str]) -> tuple[str, str]:
+    resolved_direction = _coerce_direction(direction)
+    legacy_direction = _coerce_direction(status)
+    resolved_status = _coerce_status(status)
+
+    if resolved_direction is None and legacy_direction is not None:
+        resolved_direction = legacy_direction
+    if resolved_direction is None:
+        resolved_direction = "lost"
+    if resolved_status is None:
+        resolved_status = "active"
+
+    return resolved_direction, resolved_status
+
+
+def _apply_status_filter(where_clause: str, params: list, status: Optional[str]) -> str:
+    status_direction = _coerce_direction(status)
+    status_value = _coerce_status(status)
+    if status_direction is not None:
+        where_clause += " AND direction = %s AND status = 'active'"
+        params.append(status_direction)
+    elif status_value is not None:
+        where_clause += " AND status = %s"
+        params.append(status_value)
+    return where_clause
 
 
 # ========== 工具函数定义 ==========
@@ -70,8 +136,7 @@ def search_items(query: str, status: Optional[str] = None, limit: int = 5) -> Di
         params = [vector_str, vector_str]
         
         if status:
-            where_clause += " AND status = %s"
-            params.append(status)
+            where_clause = _apply_status_filter(where_clause, params, status)
         
         cur.execute(
             f"""SELECT *, 1 - (vector <=> %s::vector) AS similarity
@@ -109,8 +174,7 @@ def search_items_keyword(query: str, status: Optional[str] = None, limit: int = 
         params = []
         
         if status:
-            where_clause += " AND status = %s"
-            params.append(status)
+            where_clause = _apply_status_filter(where_clause, params, status)
         
         where_clause += " AND (item_name ILIKE %s OR description ILIKE %s OR location ILIKE %s)"
         params.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
@@ -140,7 +204,8 @@ def search_items_keyword(query: str, status: Optional[str] = None, limit: int = 
 def create_lost(item_name: str, item_type: str, location: str, 
                 description: Optional[str] = None, lost_time: Optional[str] = None,
                 contact_person: str = "匿名", contact_phone: Optional[str] = None,
-                contact_qq: Optional[str] = None, status: str = "lost") -> Dict[str, Any]:
+                contact_qq: Optional[str] = None, status: str = "lost",
+                direction: Optional[str] = None) -> Dict[str, Any]:
     """
     创建失物招领信息
     :param item_name: 物品名称
@@ -156,6 +221,7 @@ def create_lost(item_name: str, item_type: str, location: str,
     """
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    direction, item_status = _resolve_create_state(direction, status)
     
     # 构建向量
     try:
@@ -170,10 +236,10 @@ def create_lost(item_name: str, item_type: str, location: str,
 
         cur.execute(
             """INSERT INTO lost_items
-               (id, item_name, item_type, description, location, lost_time, status,
+               (id, item_name, item_type, description, location, lost_time, direction, status,
                 contact_person, contact_phone, contact_qq, vector)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
-            (next_id, item_name, item_type or "其他", description, location, lost_time, status,
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+            (next_id, item_name, item_type or "其他", description, location, lost_time, direction, item_status,
              contact_person, contact_phone, contact_qq, vector_str)
         )
         conn.commit()
@@ -185,7 +251,7 @@ def create_lost(item_name: str, item_type: str, location: str,
         return {
             "success": True,
             "tool_name": "create_lost",
-            "message": f"{'丢失' if status == 'lost' else '捡到'}信息发布成功！",
+            "message": f"{'丢失' if direction == 'lost' else '捡到'}信息发布成功！",
             "item": result
         }
     except Exception as e:
@@ -255,11 +321,16 @@ def get_banli(item_id: int) -> Dict[str, Any]:
         item_dict.pop('vector', None)
         
         # 根据状态返回办理进度
+        direction = item_dict.get("direction", "")
         status = item_dict.get("status", "")
-        if status == "lost":
+        if status == "active" and direction == "lost":
             progress = "待找回：已登记，等待匹配..."
-        elif status == "found":
+        elif status == "active" and direction == "found":
+            progress = "找主中：已登记，等待失主联系..."
+        elif status == "recovered":
             progress = "已找回：物品已被领取"
+        elif status == "expired":
+            progress = "已过期：记录不再参与匹配"
         else:
             progress = "未知状态"
         
@@ -289,7 +360,7 @@ TOOL_DESCRIPTIONS = {
         "description": "搜索失物招领信息，支持语义匹配",
         "parameters": {
             "query": {"type": "string", "description": "搜索关键词，如：手机、钱包、校园卡"},
-            "status": {"type": "string", "description": "可选，状态过滤：lost(丢失)或found(已找回)"},
+            "status": {"type": "string", "description": "可选，旧值 lost/found 表示找物/找主；新值 active/recovered/expired 表示生命周期"},
             "limit": {"type": "integer", "description": "可选，返回数量，默认5"}
         }
     },
@@ -305,7 +376,7 @@ TOOL_DESCRIPTIONS = {
             "contact_person": {"type": "string", "description": "联系人姓名，可选"},
             "contact_phone": {"type": "string", "description": "联系电话，可选"},
             "contact_qq": {"type": "string", "description": "联系QQ，可选"},
-            "status": {"type": "string", "description": "状态：lost(我丢了)或found(我捡到了)，默认lost"}
+            "status": {"type": "string", "description": "兼容旧值：lost(我丢了)或found(我捡到了)，默认lost"}
         }
     },
     "notify_match": {
