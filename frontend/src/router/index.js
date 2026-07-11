@@ -23,7 +23,7 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const userStore = useUserStore()
-  if (!userStore.isInitialized) {
+  if (!userStore.isInitialized || userStore.isLoading) {
     await userStore.fetchUser()
   }
 

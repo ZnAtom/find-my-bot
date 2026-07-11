@@ -11,9 +11,12 @@ export const useUserStore = defineStore('user', () => {
   const isLoading = ref(false)
   const viewMode = ref(localStorage.getItem(VIEW_KEY) || 'user')
 
+  // 正在进行的 fetchUser 请求 Promise，用于让并发调用方等待同一请求
+  let fetchPromise = null
+
   const isAuthenticated = computed(() => Boolean(user.value))
   const isAdmin = computed(() => user.value?.role === 'admin')
-  
+
   // 当前生效的角色（受视角切换影响）
   const effectiveRole = computed(() => {
     if (user.value?.role !== 'admin') return user.value?.role || 'user'
@@ -23,21 +26,26 @@ export const useUserStore = defineStore('user', () => {
   const isAdminView = computed(() => user.value?.role === 'admin' && viewMode.value === 'admin')
 
   const fetchUser = async () => {
-    if (isLoading.value) return
+    // 如果已有正在进行的请求，返回同一个 Promise 让调用方等待
+    if (fetchPromise) return fetchPromise
     isLoading.value = true
-    try {
-      const res = await authApi.me()
-      user.value = res.data.user
-      if (user.value?.role !== 'admin') {
-        viewMode.value = 'user'
-        localStorage.removeItem(VIEW_KEY)
+    fetchPromise = (async () => {
+      try {
+        const res = await authApi.me()
+        user.value = res.data.user
+        if (user.value?.role !== 'admin') {
+          viewMode.value = 'user'
+          localStorage.removeItem(VIEW_KEY)
+        }
+      } catch (err) {
+        user.value = null
+      } finally {
+        isInitialized.value = true
+        isLoading.value = false
+        fetchPromise = null
       }
-    } catch (err) {
-      user.value = null
-    } finally {
-      isInitialized.value = true
-      isLoading.value = false
-    }
+    })()
+    return fetchPromise
   }
 
   const logout = async () => {

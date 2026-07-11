@@ -148,8 +148,8 @@ docker compose up -d --build
 
 ## 10. 数据库表结构
 
-| 表              | 说明                                          |
-| --------------- | --------------------------------------------- |
+| 表                | 说明                                          |
+| ----------------- | --------------------------------------------- |
 | `users`         | 用户信息（学号、姓名、联系方式）              |
 | `lost_items`    | 失物/招领信息，含 pgvector 向量列用于语义匹配 |
 | `match_records` | 失物匹配记录（相似度打分）                    |
@@ -201,6 +201,7 @@ HF_ENDPOINT=https://hf-mirror.com python -m uvicorn app:app ...
 如果您有 K8s 集群，本项目已经配置了完整的 **GitHub Actions + ArgoCD** 自动化发布流水线。
 
 ### 自动化发布流程
+
 您**不需要**在服务器上执行任何手动命令，只要在本地推送代码，即可自动上线：
 
 ```bash
@@ -210,16 +211,20 @@ git push origin develop
 ```
 
 **发生了什么？**
+
 1. **GitHub Actions** 会自动拉取代码并打包最新的 Docker 镜像（包含 Frontend, Backend, DB），并推送到 GitHub Container Registry (ghcr.io)。
 2. 镜像推送完成后，机器人会自动向仓库的 `k8s/kustomization.yaml` 推送带有最新镜像 tag 的 `chore(cd)` 提交。
 3. **ArgoCD** 会监听到 Git 仓库的变化，自动将最新的容器同步部署到 K8s 集群中。
 4. **零停机更新**：K8s 会自动拉取新镜像并平滑重启 Pod。对于 Backend，部署配置中自带 `readinessProbe`，K8s 会等待大模型下载完毕、FastAPI 完全就绪后再将流量放行，不会出现 502。
 
 ### K8s 目录结构说明
+
 相关的部署配置位于项目根目录的 `k8s/` 下：
+
 - `backend.yaml` / `frontend.yaml` / `db.yaml`：各服务的 Deployment 和 Service。
 - `ingress.yaml`：Nginx Ingress 路由配置（已集成 `cert-manager`，可全自动申请 HTTPS 证书）。
 - `kustomization.yaml`：资源入口及自动版本管理。
 
 ### HTTPS 配置注意事项
+
 K8s 环境下已开启全自动 HTTPS（Let's Encrypt DNS-01），请确保您绑定的 CNAME 直接指向 K8s 集群的公网入口（例如 `andromeda.geekpie.club` 或 `acm.shanghaitech.edu.cn`），**不要**经过二次非透明代理（如额外的 Caddy 强制 HTTPS 拦截），否则会因为无法进行 SSL 握手导致访问失败。
