@@ -18,27 +18,36 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      frontend: ${{ steps.filter.outputs.frontend }}
-      backend: ${{ steps.filter.outputs.backend }}
-      db: ${{ steps.filter.outputs.db }}
+      frontend: ${{ steps.frontend.outputs.any_changed }}
+      backend: ${{ steps.backend.outputs.any_changed }}
+      db: ${{ steps.db.outputs.any_changed }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           
-      - name: Check for changed files
-        uses: dorny/paths-filter@v3
-        id: filter
+      - name: Check frontend changes
+        id: frontend
+        uses: tj-actions/changed-files@v44
         with:
-          filters: |
-            frontend:
-              - 'frontend/**'
-            backend:
-              - 'backend/**'
-            db:
-              - 'Dockerfile'
-              - 'init.sql'
+          files: |
+            frontend/**
+
+      - name: Check backend changes
+        id: backend
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            backend/**
+
+      - name: Check db changes
+        id: db
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            Dockerfile
+            init.sql
   test:
     needs: changes
     runs-on: ubuntu-latest
