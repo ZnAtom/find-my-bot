@@ -18,9 +18,9 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      frontend: ${{ steps.filter.outputs.frontend_any_changed }}
-      backend: ${{ steps.filter.outputs.backend_any_changed }}
-      db: ${{ steps.filter.outputs.db_any_changed }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+      db: ${{ steps.filter.outputs.db }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,10 +28,10 @@ jobs:
           fetch-depth: 0
           
       - name: Check for changed files
+        uses: dorny/paths-filter@v3
         id: filter
-        uses: tj-actions/changed-files@v44
         with:
-          files_yaml: |
+          filters: |
             frontend:
               - 'frontend/**'
             backend:
