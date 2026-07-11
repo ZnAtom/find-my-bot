@@ -15,40 +15,80 @@ env:
   GITHUB_ACTOR: ${{ github.actor }}
 
 jobs:
-  test:
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.frontend.outputs.any_changed }}
+      backend: ${{ steps.backend.outputs.any_changed }}
+      db: ${{ steps.db.outputs.any_changed }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check frontend changes
+        id: frontend
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            frontend/**
+
+      - name: Check backend changes
+        id: backend
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            backend/**
+
+      - name: Check db changes
+        id: db
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            Dockerfile
+            init.sql
+  test:
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true'
+        uses: actions/checkout@v4
       
       - name: Set up Python
+        if: needs.changes.outputs.backend == 'true'
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
           
       - name: Install dependencies
+        if: needs.changes.outputs.backend == 'true'
         run: |
           cd backend
           pip install -r requirements.txt
           
       - name: Run Backend tests
+        if: needs.changes.outputs.backend == 'true'
         run: |
           cd backend
           PYTHONPATH=. pytest tests/
 
       - name: Set up Node.js
+        if: needs.changes.outputs.frontend == 'true'
         uses: actions/setup-node@v3
         with:
           node-version: '18'
 
       - name: Run Frontend tests
+        if: needs.changes.outputs.frontend == 'true'
         run: |
           cd frontend
           npm install
           npm run test
           
   build-and-push:
-    needs: test
+    needs: [changes, test]
     runs-on: ubuntu-latest
     permissions:
       contents: write # Needed for pushing K8s yaml updates if using GitOps
@@ -56,23 +96,10 @@ jobs:
 
     steps:
       - name: Checkout repository
+        if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.db == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-        
-      - name: Check for changed files
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          filters: |
-            frontend:
-              - 'frontend/**'
-            backend:
-              - 'backend/**'
-            db:
-              - 'Dockerfile'
-              - 'init.sql'
 
       - name: Downcase REPO
         run: |
@@ -86,7 +113,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata (tags, labels) for DB
-        if: steps.filter.outputs.db == 'true'
+        if: needs.changes.outputs.db == 'true'
         id: meta-db
         uses: docker/metadata-action@v5
         with:
@@ -96,7 +123,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push DB Docker image
-        if: steps.filter.outputs.db == 'true'
+        if: needs.changes.outputs.db == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -105,7 +132,7 @@ jobs:
           labels: ${{ steps.meta-db.outputs.labels }}
 
       - name: Extract metadata (tags, labels) for Frontend
-        if: steps.filter.outputs.frontend == 'true'
+        if: needs.changes.outputs.frontend == 'true'
         id: meta-frontend
         uses: docker/metadata-action@v5
         with:
@@ -115,7 +142,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Frontend Docker image
-        if: steps.filter.outputs.frontend == 'true'
+        if: needs.changes.outputs.frontend == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
@@ -124,7 +151,7 @@ jobs:
           labels: ${{ steps.meta-frontend.outputs.labels }}
 
       - name: Extract metadata (tags, labels) for Backend
-        if: steps.filter.outputs.backend == 'true'
+        if: needs.changes.outputs.backend == 'true'
         id: meta-backend
         uses: docker/metadata-action@v5
         with:
@@ -134,7 +161,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Backend Docker image
-        if: steps.filter.outputs.backend == 'true'
+        if: needs.changes.outputs.backend == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./backend
@@ -147,20 +174,20 @@ jobs:
         uses: imranismail/setup-kustomize@v2
 
       - name: Update K8s Manifests with new Image Tags
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.db == 'true')
         run: |
           cd k8s
-          if [ "${{ steps.filter.outputs.frontend }}" == "true" ]; then
+          if [ "${{ needs.changes.outputs.frontend }}" == "true" ]; then
             kustomize edit set image ghcr.io/${{ env.REPO }}-frontend=ghcr.nju.edu.cn/${{ env.REPO }}-frontend:sha-${{ github.sha }}
           fi
-          if [ "${{ steps.filter.outputs.backend }}" == "true" ]; then
+          if [ "${{ needs.changes.outputs.backend }}" == "true" ]; then
             kustomize edit set image ghcr.io/${{ env.REPO }}-backend=ghcr.nju.edu.cn/${{ env.REPO }}-backend:sha-${{ github.sha }}
           fi
-          if [ "${{ steps.filter.outputs.db }}" == "true" ]; then
+          if [ "${{ needs.changes.outputs.db }}" == "true" ]; then
             kustomize edit set image ghcr.io/${{ env.REPO }}-db=ghcr.nju.edu.cn/${{ env.REPO }}-db:sha-${{ github.sha }}
           fi
       - name: Commit and push K8s manifest changes (GitOps)
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.db == 'true')
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"

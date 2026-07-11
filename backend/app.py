@@ -56,33 +56,27 @@ async def periodic_email_matcher():
             # Sleep first or wait for the specific time. Let's sleep for 24h.
             # In a real system, this would be cron-like, e.g. apscheduler.
             await asyncio.sleep(86400)
-            logging.info("Running daily email matcher for active lost/found items...")
+            logging.info("Running daily email matcher for pending lost/found items...")
             conn = get_db_connection()
             cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-            
-            # Active lost/found entries are matched against the opposite direction.
+
+            # Simple logic: check pending items against their opposite pool
             cur.execute("""
-                SELECT l.id, l.item_name, l.direction, l.contact_person, u.email, l.vector
-                FROM lost_items l 
-                LEFT JOIN users u ON l.user_id = u.id 
-                WHERE l.status = 'active'
-                  AND l.direction IN ('lost', 'found')
-                  AND u.email IS NOT NULL
-                  AND l.vector IS NOT NULL
+                SELECT l.id, l.item_name, l.post_type, l.contact_person, u.email, l.vector
+                FROM lost_items l
+                LEFT JOIN users u ON l.user_id = u.id
+                WHERE l.status = 'pending' AND u.email IS NOT NULL AND l.vector IS NOT NULL
             """)
             items = cur.fetchall()
             for item in items:
-                target_direction = "found" if item["direction"] == "lost" else "lost"
+                target_type = "found" if item['post_type'] == "lost" else "lost"
                 # Actual vector search for matches > 0.8
                 cur.execute("""
                     SELECT id, item_name, 1 - (vector <=> %s::vector) AS similarity
                     FROM lost_items
-                    WHERE direction = %s
-                      AND status = 'active'
-                      AND id <> %s
-                      AND 1 - (vector <=> %s::vector) > 0.8
+                    WHERE post_type = %s AND status = 'pending' AND 1 - (vector <=> %s::vector) > 0.8
                     ORDER BY similarity DESC LIMIT 5
-                """, (item["vector"], target_direction, item["id"], item["vector"]))
+                """, (item['vector'], target_type, item['vector']))
                 matches = cur.fetchall()
                 if matches:
                     await send_match_email(
@@ -323,131 +317,6 @@ def none_if_empty(val):
     """将空字符串转为 None，避免 PostgreSQL 解析空字符串报错"""
     return val if val not in (None, '') else None
 
-
-DIRECTION_ALIASES = {
-    "lost": "lost",
-    "find_item": "lost",
-    "找物": "lost",
-    "found": "found",
-    "find_owner": "found",
-    "找主": "found",
-}
-
-STATUS_ALIASES = {
-    "active": "active",
-    "pending": "active",
-    "待匹配": "active",
-    "recovered": "recovered",
-    "matched": "recovered",
-    "closed": "recovered",
-    "已找回": "recovered",
-    "expired": "expired",
-    "过期": "expired",
-}
-
-
-def _clean_state_value(value: Optional[str]) -> Optional[str]:
-    if value is None:
-        return None
-    cleaned = value.strip()
-    return cleaned or None
-
-
-def _coerce_direction(value: Optional[str]) -> Optional[str]:
-    value = _clean_state_value(value)
-    if value is None:
-        return None
-    return DIRECTION_ALIASES.get(value)
-
-
-def _coerce_status(value: Optional[str]) -> Optional[str]:
-    value = _clean_state_value(value)
-    if value is None:
-        return None
-    return STATUS_ALIASES.get(value)
-
-
-def _resolve_create_state(direction: Optional[str], status: Optional[str]) -> tuple[str, str]:
-    resolved_direction = _coerce_direction(direction)
-    if direction is not None and resolved_direction is None:
-        raise HTTPException(status_code=400, detail="无效发布方向，仅支持 lost/found 或 找物/找主")
-
-    resolved_status = _coerce_status(status)
-    legacy_direction = _coerce_direction(status)
-    if status is not None and resolved_status is None and legacy_direction is None:
-        raise HTTPException(status_code=400, detail="无效状态，仅支持 active/recovered/expired 或旧值 lost/found")
-
-    if resolved_direction is None and legacy_direction is not None:
-        resolved_direction = legacy_direction
-    if resolved_direction is None:
-        resolved_direction = "lost"
-    if resolved_status is None:
-        resolved_status = "active"
-
-    return resolved_direction, resolved_status
-
-
-def _append_item_filters(
-    where_clause: str,
-    params: list,
-    *,
-    status: Optional[str] = None,
-    direction: Optional[str] = None,
-    item_type: Optional[str] = None,
-) -> str:
-    if item_type:
-        where_clause += " AND item_type = %s"
-        params.append(item_type)
-
-    resolved_direction = _coerce_direction(direction)
-    if direction is not None and resolved_direction is None:
-        raise HTTPException(status_code=400, detail="无效发布方向，仅支持 lost/found 或 找物/找主")
-
-    status_as_direction = _coerce_direction(status)
-    resolved_status = _coerce_status(status)
-    if status is not None and status_as_direction is None and resolved_status is None:
-        raise HTTPException(status_code=400, detail="无效状态筛选")
-
-    if status_as_direction is not None:
-        if resolved_direction is not None and resolved_direction != status_as_direction:
-            raise HTTPException(status_code=400, detail="direction 与旧版 status 筛选冲突")
-        resolved_direction = status_as_direction
-        resolved_status = "active"
-
-    if resolved_direction is not None:
-        where_clause += " AND direction = %s"
-        params.append(resolved_direction)
-    if resolved_status is not None:
-        where_clause += " AND status = %s"
-        params.append(resolved_status)
-
-    return where_clause
-
-
-def _append_state_update(update_fields: list[str], params: list, direction: Optional[str], status: Optional[str]) -> None:
-    resolved_direction = _coerce_direction(direction)
-    if direction is not None and resolved_direction is None:
-        raise HTTPException(status_code=400, detail="无效发布方向，仅支持 lost/found 或 找物/找主")
-
-    status_as_direction = _coerce_direction(status)
-    resolved_status = _coerce_status(status)
-    if status is not None and status_as_direction is None and resolved_status is None:
-        raise HTTPException(status_code=400, detail="无效状态，仅支持 active/recovered/expired 或旧值 lost/found")
-
-    if status_as_direction is not None:
-        if resolved_direction is not None and resolved_direction != status_as_direction:
-            raise HTTPException(status_code=400, detail="direction 与旧版 status 更新冲突")
-        resolved_direction = status_as_direction
-        resolved_status = "active"
-
-    if resolved_direction is not None:
-        update_fields.append("direction = %s")
-        params.append(resolved_direction)
-    if resolved_status is not None:
-        update_fields.append("status = %s")
-        params.append(resolved_status)
-
-
 class UserCreate(BaseModel):
     student_id: str
     name: str
@@ -482,11 +351,11 @@ class UserResponse(BaseModel):
 class LostItemCreate(BaseModel):
     item_name: str
     item_type: Optional[str] = None
+    post_type: Optional[str] = "lost"
     description: Optional[str] = None
     location: Optional[str] = None
     lost_time: Optional[str] = None
-    direction: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[str] = "pending"
     image_url: Optional[str] = None
     contact_person: str
     contact_phone: Optional[str] = None
@@ -495,10 +364,10 @@ class LostItemCreate(BaseModel):
 class LostItemUpdate(BaseModel):
     item_name: Optional[str] = None
     item_type: Optional[str] = None
+    post_type: Optional[str] = None
     description: Optional[str] = None
     location: Optional[str] = None
     found_time: Optional[str] = None
-    direction: Optional[str] = None
     status: Optional[str] = None
     image_url: Optional[str] = None
 
@@ -506,11 +375,11 @@ class LostItemResponse(BaseModel):
     id: int
     item_name: str
     item_type: Optional[str] = None
+    post_type: str
     description: Optional[str] = None
     location: Optional[str] = None
     lost_time: Optional[str] = None
     found_time: Optional[str] = None
-    direction: Optional[str] = None
     status: str
     image_url: Optional[str] = None
     contact_person: str
@@ -569,7 +438,6 @@ def update_me(update: UserProfileUpdate, request: Request):
 def get_my_lost_items(
     request: Request,
     status: Optional[str] = None,
-    direction: Optional[str] = None,
     item_type: Optional[str] = None,
     page: int = 1,
     page_size: int = 20
@@ -581,13 +449,12 @@ def get_my_lost_items(
     where_clause = "WHERE user_id = %s"
     params = [current_user["id"]]
 
-    where_clause = _append_item_filters(
-        where_clause,
-        params,
-        status=status,
-        direction=direction,
-        item_type=item_type,
-    )
+    if status:
+        where_clause += " AND status = %s"
+        params.append(status)
+    if item_type:
+        where_clause += " AND item_type = %s"
+        params.append(item_type)
 
     cur.execute(f"SELECT COUNT(*) as total FROM lost_items {where_clause}", params)
     total = cur.fetchone()['total']
@@ -696,7 +563,7 @@ def update_user(user_id: int, update: UserUpdate, request: Request):
 @app.get("/api/lost-items")
 def get_lost_items(
     status: Optional[str] = None,
-    direction: Optional[str] = None,
+    post_type: Optional[str] = None,
     item_type: Optional[str] = None,
     page: int = 1,
     page_size: int = 20
@@ -708,13 +575,15 @@ def get_lost_items(
     where_clause = "WHERE 1=1"
     params = []
     
-    where_clause = _append_item_filters(
-        where_clause,
-        params,
-        status=status,
-        direction=direction,
-        item_type=item_type,
-    )
+    if status:
+        where_clause += " AND status = %s"
+        params.append(status)
+    if post_type:
+        where_clause += " AND post_type = %s"
+        params.append(post_type)
+    if item_type:
+        where_clause += " AND item_type = %s"
+        params.append(item_type)
     
     # 查询总数
     count_query = f"SELECT COUNT(*) as total FROM lost_items {where_clause}"
@@ -742,24 +611,21 @@ class MatchCheckRequest(LostItemCreate):
 
 @app.post("/api/match-check")
 def match_check(item: MatchCheckRequest, limit: int = 5):
-    direction, _ = _resolve_create_state(item.direction, item.status)
     vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, item.image_url)
     if not vector:
         return {"results": []}
 
-    target_direction = "found" if direction == "lost" else "lost"
+    target_type = "found" if item.post_type == "lost" else "lost"
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
         cur.execute(
             """SELECT *, 1 - (vector <=> %s::vector) AS similarity
                FROM lost_items
-               WHERE vector IS NOT NULL
-                 AND direction = %s
-                 AND status = 'active'
+               WHERE vector IS NOT NULL AND post_type = %s AND status = 'pending'
                ORDER BY vector <=> %s::vector
                LIMIT %s""",
-            (vector, target_direction, vector, limit)
+            (vector, target_type, vector, limit)
         )
         items = cur.fetchall()
         # Only return high similarity items? For now return top 5
@@ -772,10 +638,9 @@ def match_check(item: MatchCheckRequest, limit: int = 5):
 def create_lost_item(item: LostItemCreate, request: Request):
     current_user = get_current_user(request)
     verify_csrf_origin(request)
-    direction, status = _resolve_create_state(item.direction, item.status)
-    vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, item.image_url)
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, item.image_url)
     try:
         # 显式获取下一个 ID（序列权限变通方案）
         cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM lost_items")
@@ -783,12 +648,12 @@ def create_lost_item(item: LostItemCreate, request: Request):
 
         cur.execute(
             """INSERT INTO lost_items
-               (id, item_name, item_type, description, location, lost_time, direction, status,
+               (id, item_name, item_type, post_type, description, location, lost_time, status,
                 image_url, contact_person, contact_phone, contact_qq, user_id, vector)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
-            (next_id, item.item_name, none_if_empty(item.item_type),
+            (next_id, item.item_name, none_if_empty(item.item_type), none_if_empty(item.post_type) or 'lost',
              none_if_empty(item.description), none_if_empty(item.location),
-             none_if_empty(item.lost_time), direction, status,
+             none_if_empty(item.lost_time), none_if_empty(item.status) or 'pending',
              none_if_empty(item.image_url), item.contact_person,
              none_if_empty(item.contact_phone), none_if_empty(item.contact_qq),
              current_user["id"],
@@ -835,6 +700,9 @@ def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
         if item.item_type:
             update_fields.append("item_type = %s")
             params.append(item.item_type)
+        if item.post_type:
+            update_fields.append("post_type = %s")
+            params.append(item.post_type)
         if item.description:
             update_fields.append("description = %s")
             params.append(item.description)
@@ -844,7 +712,9 @@ def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
         if item.found_time:
             update_fields.append("found_time = %s")
             params.append(item.found_time)
-        _append_state_update(update_fields, params, item.direction, item.status)
+        if item.status:
+            update_fields.append("status = %s")
+            params.append(item.status)
         if item.image_url:
             update_fields.append("image_url = %s")
             params.append(item.image_url)
@@ -852,19 +722,14 @@ def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
         if not update_fields:
             raise HTTPException(status_code=400, detail="没有要更新的字段")
 
-        if item.item_name or item.description or item.location or item.found_time or item.image_url:
-            cur.execute(
-                "SELECT item_name, location, lost_time, description, image_url FROM lost_items WHERE id = %s",
-                (item_id,),
-            )
+        if item.item_name or item.description or item.image_url:
+            cur.execute("SELECT item_name, description, image_url FROM lost_items WHERE id = %s", (item_id,))
             row = cur.fetchone()
             if row:
                 new_name = item.item_name or row["item_name"]
-                new_location = item.location or row["location"]
-                new_time = item.found_time or row["lost_time"]
                 new_desc = item.description or row["description"]
                 new_img = item.image_url or row["image_url"]
-                vector = _build_vector(new_name, new_location, str(new_time) if new_time else "", new_desc, new_img)
+                vector = _build_vector(new_name, new_desc, new_img)
                 update_fields.append("vector = %s::vector")
                 params.append(vector)
 
@@ -916,7 +781,6 @@ def search_lost_items(
     query: str = Query(..., min_length=1),
     item_type: Optional[str] = None,
     status: Optional[str] = None,
-    direction: Optional[str] = None,
     limit: int = 10
 ):
     conn = get_db_connection()
@@ -925,13 +789,12 @@ def search_lost_items(
     search_query = "SELECT * FROM lost_items WHERE 1=1"
     params = []
     
-    search_query = _append_item_filters(
-        search_query,
-        params,
-        status=status,
-        direction=direction,
-        item_type=item_type,
-    )
+    if item_type:
+        search_query += " AND item_type = %s"
+        params.append(item_type)
+    if status:
+        search_query += " AND status = %s"
+        params.append(status)
     
     search_query += " AND (item_name ILIKE %s OR description ILIKE %s OR location ILIKE %s)"
     params.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
@@ -981,17 +844,11 @@ def get_stats():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    cur.execute("SELECT COUNT(*) FROM lost_items WHERE direction = 'lost' AND status = 'active'")
+    cur.execute("SELECT COUNT(*) FROM lost_items WHERE status = 'pending'")
     lost_count = cur.fetchone()[0]
     
-    cur.execute("SELECT COUNT(*) FROM lost_items WHERE direction = 'found' AND status = 'active'")
+    cur.execute("SELECT COUNT(*) FROM lost_items WHERE status = 'resolved'")
     found_count = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM lost_items WHERE status = 'recovered'")
-    recovered_count = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM lost_items WHERE status = 'expired'")
-    expired_count = cur.fetchone()[0]
     
     cur.execute("SELECT COUNT(*) FROM lost_items")
     total_count = cur.fetchone()[0]
@@ -1006,8 +863,6 @@ def get_stats():
         "total_items": total_count,
         "lost_count": lost_count,
         "found_count": found_count,
-        "recovered_count": recovered_count,
-        "expired_count": expired_count,
         "user_count": user_count
     }
 
