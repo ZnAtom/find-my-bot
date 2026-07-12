@@ -1,129 +1,132 @@
 <template>
-  <div class="admin-page" v-loading="loading" element-loading-text="加载中...">
-    <h2>管理后台</h2>
+  <div class="admin-page" v-loading="loading" element-loading-text="加载中">
+    <div class="page-shell">
+      <header class="admin-header">
+        <div>
+          <p class="page-kicker">Admin Console</p>
+          <h1 class="page-title">管理台</h1>
+          <p class="page-subtitle">维护物品记录、用户权限和向量数据状态。</p>
+        </div>
+        <el-button round :icon="Refresh" @click="loadAll">刷新</el-button>
+      </header>
 
-    <!-- 统计卡片 -->
-    <div class="stats-cards">
-      <el-card class="stat-card" v-for="s in statCards" :key="s.label">
-        <template v-if="loading">
-          <el-skeleton animated>
-            <template #template>
-              <div style="display:flex;align-items:center;gap:20px">
-                <el-skeleton-item variant="circle" style="width:60px;height:60px" />
-                <div>
-                  <el-skeleton-item variant="text" style="width:60px;height:28px" />
-                  <el-skeleton-item variant="text" style="width:40px;height:14px" />
-                </div>
-              </div>
-            </template>
-          </el-skeleton>
-        </template>
-        <template v-else>
-          <div :class="['stat-icon', s.cls]"><el-icon><component :is="s.icon" /></el-icon></div>
-          <div class="stat-info">
-            <div class="stat-num">{{ s.value }}</div>
-            <div class="stat-label">{{ s.label }}</div>
+      <section class="admin-metrics">
+        <div v-for="s in statCards" :key="s.label" class="metric-card">
+          <div :class="['metric-label', s.cls]">
+            <el-icon><component :is="s.icon" /></el-icon>
+            {{ s.label }}
           </div>
-        </template>
-      </el-card>
+          <div class="metric-value">{{ s.value }}</div>
+        </div>
+      </section>
+
+      <section class="surface-section admin-panel">
+        <el-tabs v-model="activeTab">
+          <el-tab-pane label="物品记录" name="items">
+            <el-table :data="items" v-loading="loading">
+              <el-table-column prop="id" label="ID" width="70" />
+              <el-table-column label="物品" min-width="220">
+                <template #default="scope">
+                  <div class="item-title-cell">
+                    <strong>{{ scope.row.item_name }}</strong>
+                    <small>{{ scope.row.location || '未知地点' }}</small>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="类型" width="92">
+                <template #default="scope">
+                  <span class="type-chip">{{ getDirectionText(scope.row.direction) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="item_type" label="分类" width="110" />
+              <el-table-column label="状态" width="110">
+                <template #default="scope">
+                  <span :class="['status-chip', getStatusClass(scope.row)]">
+                    {{ getStatusText(scope.row) }}
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="contact_person" label="联系人" width="110" />
+              <el-table-column label="向量" width="190">
+                <template #default="scope">
+                  <template v-if="scope.row.vector">
+                    <span class="vector-summary">{{ vectorSummary(scope.row.vector) }}</span>
+                    <el-button type="primary" link size="small" @click="showVector(scope.row)">详情</el-button>
+                  </template>
+                  <span v-else class="no-vector">未生成</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="发布时间" width="180">
+                <template #default="scope">
+                  {{ formatTime(scope.row.created_at) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="220" fixed="right">
+                <template #default="scope">
+                  <el-button type="primary" link @click="goDetail(scope.row.id)">查看</el-button>
+                  <el-button type="primary" link @click="editItem(scope.row)">编辑</el-button>
+                  <el-button
+                    v-if="scope.row.status === 'active'"
+                    type="success"
+                    link
+                    @click="markResolved(scope.row.id)"
+                  >
+                    标记解决
+                  </el-button>
+                  <el-button type="danger" link @click="deleteItem(scope.row.id)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+
+          <el-tab-pane label="用户" name="users">
+            <el-table :data="users" v-loading="loadingUsers">
+              <el-table-column prop="id" label="ID" width="70" />
+              <el-table-column prop="name" label="姓名" width="140" />
+              <el-table-column prop="student_id" label="学号 / Casdoor ID" min-width="220">
+                <template #default="scope">
+                  <span class="mono">{{ scope.row.student_id }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="email" label="邮箱" min-width="200" />
+              <el-table-column label="角色" width="110">
+                <template #default="scope">
+                  <el-tag :type="scope.row.role === 'admin' ? 'danger' : 'info'" size="small">
+                    {{ scope.row.role === 'admin' ? '管理员' : '普通用户' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="注册时间" width="180">
+                <template #default="scope">{{ formatTime(scope.row.created_at) }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="160" fixed="right">
+                <template #default="scope">
+                  <el-button
+                    v-if="scope.row.role === 'user'"
+                    type="primary"
+                    link
+                    @click="promoteUser(scope.row.id)"
+                  >
+                    设为管理员
+                  </el-button>
+                  <el-button
+                    v-else-if="scope.row.id !== userStore.user?.id"
+                    type="warning"
+                    link
+                    @click="demoteUser(scope.row.id)"
+                  >
+                    设为普通用户
+                  </el-button>
+                  <span v-else class="self-role-note">当前账号</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+        </el-tabs>
+      </section>
     </div>
 
-    <!-- 表格 -->
-    <div class="table-section">
-      <h3>失物列表管理</h3>
-      <el-table :data="items" border v-loading="loading">
-        <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column prop="item_name" label="物品名称" />
-        <el-table-column prop="item_type" label="类型" width="100" />
-        <el-table-column label="方向" width="90">
-          <template #default="scope">{{ directionText(scope.row.direction) }}</template>
-        </el-table-column>
-        <el-table-column prop="location" label="地点" />
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="scope">
-            <el-tag :type="statusTagType(scope.row.status)">
-              {{ statusText(scope.row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="contact_person" label="联系人" width="100" />
-        <el-table-column label="向量" width="180">
-          <template #default="scope">
-            <template v-if="scope.row.vector">
-              <span class="vector-summary">{{ vectorSummary(scope.row.vector) }}</span>
-              <el-button type="primary" link size="small" @click="showVector(scope.row)">详情</el-button>
-            </template>
-            <span v-else class="no-vector">未向量化</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="发布时间" width="180">
-          <template #default="scope">
-            {{ formatTime(scope.row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200">
-          <template #default="scope">
-            <el-button type="text" size="small" @click="goDetail(scope.row.id)">查看</el-button>
-            <el-button type="text" size="small" @click="editItem(scope.row)">编辑</el-button>
-            <el-button type="text" size="small" @click="deleteItem(scope.row.id)" style="color: #F56C6C">删除</el-button>
-            <el-button
-              v-if="scope.row.status === 'active'"
-              type="text" size="small" @click="markFound(scope.row.id)"
-              style="color: #67C23A"
-            >
-              标记解决
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-
-    <!-- 用户管理 -->
-    <div class="table-section" style="margin-top: 40px">
-      <h3>用户管理</h3>
-      <el-table :data="users" border v-loading="loadingUsers">
-        <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column prop="name" label="姓名" width="120" />
-        <el-table-column prop="student_id" label="学号 / Casdoor ID" min-width="200">
-          <template #default="scope">
-            <span style="font-family: monospace; font-size: 12px">{{ scope.row.student_id }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="email" label="邮箱" width="200" />
-        <el-table-column prop="role" label="角色" width="100">
-          <template #default="scope">
-            <el-tag :type="scope.row.role === 'admin' ? 'danger' : 'info'" size="small">
-              {{ scope.row.role === 'admin' ? '管理员' : '普通用户' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="注册时间" width="180">
-          <template #default="scope">{{ formatTime(scope.row.created_at) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="140">
-          <template #default="scope">
-            <el-button
-              v-if="scope.row.role === 'user'"
-              type="primary" link size="small"
-              @click="promoteUser(scope.row.id)"
-            >
-              提升为管理员
-            </el-button>
-            <el-button
-              v-else-if="scope.row.id !== userStore.user?.id"
-              type="warning" link size="small"
-              @click="demoteUser(scope.row.id)"
-            >
-              降级为普通用户
-            </el-button>
-            <span v-else class="self-role-note">当前账号</span>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-
-    <!-- 向量详情弹窗 -->
-    <el-dialog v-model="vectorDialogVisible" title="向量详情" width="700px">
+    <el-dialog v-model="vectorDialogVisible" title="向量详情" width="760px">
       <template v-if="selectedItem">
         <p><strong>物品：</strong>{{ selectedItem.item_name }}</p>
         <p><strong>向量维度：</strong>{{ vectorParsed(selectedItem.vector).length }}</p>
@@ -131,37 +134,36 @@
       </template>
     </el-dialog>
 
-    <!-- 编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" title="编辑失物信息">
-      <el-form :model="editForm" label-width="100px">
-        <el-form-item label="物品名称">
-          <el-input v-model="editForm.item_name" />
-        </el-form-item>
-        <el-form-item label="物品类型">
-          <el-select v-model="editForm.item_type">
-            <el-option label="电子产品" value="电子产品" />
-            <el-option label="证件卡片" value="证件卡片" />
-            <el-option label="衣物鞋帽" value="衣物鞋帽" />
-            <el-option label="学习用品" value="学习用品" />
-            <el-option label="其他" value="其他" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="信息类型">
-          <el-select v-model="editForm.direction">
-            <el-option label="寻物" value="lost" />
-            <el-option label="招领" value="found" />
-          </el-select>
-        </el-form-item>
+    <el-dialog v-model="dialogVisible" title="编辑物品记录" width="620px">
+      <el-form :model="editForm" label-position="top">
+        <div class="form-grid">
+          <el-form-item label="物品名称">
+            <el-input v-model="editForm.item_name" />
+          </el-form-item>
+          <el-form-item label="物品类型">
+            <el-select v-model="editForm.item_type">
+              <el-option v-for="type in itemTypes" :key="type" :label="type" :value="type" />
+            </el-select>
+          </el-form-item>
+        </div>
         <el-form-item label="详细描述">
-          <el-input type="textarea" v-model="editForm.description" :rows="3" />
+          <el-input type="textarea" v-model="editForm.description" :rows="4" />
         </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="editForm.status">
-            <el-option label="匹配中" value="active" />
-            <el-option label="已找回" value="recovered" />
-            <el-option label="过期" value="expired" />
-          </el-select>
-        </el-form-item>
+        <div class="form-grid">
+          <el-form-item label="信息类型">
+            <el-radio-group v-model="editForm.direction">
+              <el-radio-button value="lost">寻物</el-radio-button>
+              <el-radio-button value="found">招领</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-radio-group v-model="editForm.status">
+              <el-radio-button value="active">进行中</el-radio-button>
+              <el-radio-button value="recovered">已找回</el-radio-button>
+              <el-radio-button value="expired">已过期</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -175,13 +177,13 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { HelpFilled, CircleCheck, Box, User } from '@element-plus/icons-vue'
+import { Box, CircleCheck, HelpFilled, Refresh, User } from '@element-plus/icons-vue'
 import { lostItemsApi, statsApi, usersApi } from '../api'
 import { useUserStore } from '../stores/user'
 
 const userStore = useUserStore()
-
 const router = useRouter()
+const activeTab = ref('items')
 const stats = ref({})
 const items = ref([])
 const users = ref([])
@@ -190,6 +192,8 @@ const loadingUsers = ref(true)
 const dialogVisible = ref(false)
 const vectorDialogVisible = ref(false)
 const selectedItem = ref(null)
+const itemTypes = ['电子产品', '证件卡片', '衣物鞋帽', '学习用品', '钱包钥匙', '其他']
+
 const editForm = reactive({
   id: null,
   item_name: '',
@@ -200,25 +204,11 @@ const editForm = reactive({
 })
 
 const statCards = computed(() => [
-  { label: '找物中', value: stats.value.lost_count || 0, icon: HelpFilled, cls: 'lost' },
-  { label: '找主中', value: stats.value.found_count || 0, icon: CircleCheck, cls: 'found' },
-  { label: '已找回', value: stats.value.recovered_count || 0, icon: Box, cls: 'total' },
-  { label: '用户数', value: stats.value.user_count || 0, icon: User, cls: 'user' },
+  { label: '正在寻找', value: stats.value.lost_count || 0, icon: HelpFilled, cls: 'danger' },
+  { label: '等待认领', value: stats.value.found_count || 0, icon: CircleCheck, cls: 'success' },
+  { label: '总记录', value: stats.value.total_items || 0, icon: Box, cls: '' },
+  { label: '用户', value: stats.value.user_count || 0, icon: User, cls: '' },
 ])
-
-const directionText = (direction) => direction === 'found' ? '找主' : '找物'
-
-const statusText = (status) => {
-  if (status === 'recovered') return '已找回'
-  if (status === 'expired') return '过期'
-  return '匹配中'
-}
-
-const statusTagType = (status) => {
-  if (status === 'recovered') return 'success'
-  if (status === 'expired') return 'info'
-  return 'warning'
-}
 
 onMounted(() => {
   if (!userStore.isAdminView) {
@@ -244,8 +234,8 @@ const loadAll = async () => {
       usersApi.getAll(),
     ])
     stats.value = statsRes.data
-    items.value = itemsRes.data.items
-    users.value = usersRes.data
+    items.value = itemsRes.data.items || []
+    users.value = usersRes.data || []
   } catch (e) {
     console.error('加载失败', e)
   } finally {
@@ -257,7 +247,7 @@ const loadAll = async () => {
 const promoteUser = async (userId) => {
   try {
     await usersApi.update(userId, { role: 'admin' })
-    ElMessage.success('已提升为管理员')
+    ElMessage.success('已设为管理员')
     loadAll()
   } catch (e) {
     ElMessage.error('操作失败')
@@ -266,13 +256,13 @@ const promoteUser = async (userId) => {
 
 const demoteUser = async (userId) => {
   try {
-    await ElMessageBox.confirm('确定要将该用户降级为普通用户吗？', '确认操作', {
+    await ElMessageBox.confirm('确定要设为普通用户吗？', '确认操作', {
       type: 'warning',
       confirmButtonText: '确定',
       cancelButtonText: '取消',
     })
     await usersApi.update(userId, { role: 'user' })
-    ElMessage.success('已降级为普通用户')
+    ElMessage.success('已设为普通用户')
     loadAll()
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') {
@@ -289,7 +279,7 @@ const editItem = (row) => {
   editForm.id = row.id
   editForm.item_name = row.item_name
   editForm.item_type = row.item_type
-  editForm.direction = row.direction || 'lost'
+  editForm.direction = row.direction || row.post_type || 'lost'
   editForm.description = row.description
   editForm.status = row.status
   dialogVisible.value = true
@@ -315,7 +305,7 @@ const saveEdit = async () => {
 
 const deleteItem = async (id) => {
   try {
-    await ElMessageBox.confirm('确定要删除这条记录吗？', '警告', {
+    await ElMessageBox.confirm('确定要删除这条记录吗？', '删除确认', {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消',
@@ -331,7 +321,7 @@ const deleteItem = async (id) => {
   }
 }
 
-const markFound = async (id) => {
+const markResolved = async (id) => {
   try {
     await lostItemsApi.update(id, { status: 'recovered' })
     ElMessage.success('标记成功')
@@ -348,9 +338,9 @@ const formatTime = (time) => {
 }
 
 const vectorSummary = (vec) => {
-  const arr = Array.isArray(vec) ? vec : JSON.parse(vec.replace(/\(/g, '[').replace(/\)/g, ']'))
+  const arr = vectorParsed(vec)
   if (arr.length === 0) return '无'
-  return `[${arr.slice(0, 5).map(v => Number(v).toFixed(4)).join(', ')}, ...] ${arr.length}维`
+  return `[${arr.slice(0, 3).map(v => Number(v).toFixed(4)).join(', ')}, ...] ${arr.length}维`
 }
 
 const vectorParsed = (vec) => {
@@ -363,142 +353,124 @@ const showVector = (row) => {
   selectedItem.value = row
   vectorDialogVisible.value = true
 }
+
+const getDirectionText = (direction) => direction === 'found' ? '招领' : '寻物'
+
+const getStatusClass = (row) => {
+  if (row.status === 'recovered') return 'recovered'
+  if (row.status === 'expired') return 'expired'
+  return row.direction === 'lost' ? 'lost' : 'found'
+}
+
+const getStatusText = (row) => {
+  if (row.status === 'recovered') return '已找回'
+  if (row.status === 'expired') return '已过期'
+  return row.direction === 'lost' ? '待找回' : '招领中'
+}
 </script>
 
 <style scoped>
-.admin-page {
-  padding: 20px;
-}
-
-.admin-page h2 {
-  margin-bottom: 30px;
-  font-size: 24px;
-}
-
-.stats-cards {
+.admin-header {
   display: flex;
-  gap: 20px;
-  margin-bottom: 30px;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 22px;
 }
 
-.stat-card {
-  flex: 1;
+.admin-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
 }
 
-.stat-card :deep(.el-card__body) {
-  display: flex;
-  align-items: center;
-  gap: 20px;
+.metric-label.success {
+  color: var(--success-color);
 }
 
-.stat-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  flex-shrink: 0;
+.metric-label.danger {
+  color: var(--danger-color);
 }
 
-.stat-icon.lost { background: #fef0f0; color: #F56C6C; }
-.stat-icon.found { background: #f0f9eb; color: #67C23A; }
-.stat-icon.total { background: #ecf5ff; color: #409EFF; }
-.stat-icon.user { background: #fdf6ec; color: #E6A23C; }
-
-.stat-info .stat-num {
-  font-size: 28px;
-  font-weight: bold;
-  color: #303133;
+.admin-panel {
+  padding: 0 18px 18px;
 }
 
-.stat-info .stat-label {
-  font-size: 14px;
-  color: #909399;
+.item-title-cell strong,
+.item-title-cell small {
+  display: block;
 }
 
-.table-section h3 {
-  margin-bottom: 15px;
-  font-size: 18px;
+.item-title-cell strong {
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.item-title-cell small {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.vector-summary,
+.mono,
+.vector-full {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .vector-summary {
-  font-family: monospace;
+  color: var(--text-secondary);
   font-size: 11px;
-  color: #606266;
-  margin-right: 8px;
 }
 
 .no-vector {
-  color: #F56C6C;
+  color: var(--danger-color);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.self-role-note {
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
 .vector-full {
-  font-family: monospace;
-  font-size: 11px;
-  max-height: 400px;
+  max-height: 420px;
   overflow-y: auto;
-  word-break: break-all;
-  background: #f5f7fa;
   padding: 12px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-md);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 11px;
   line-height: 1.8;
+  word-break: break-all;
 }
 
-/* ===== 响应式 ===== */
-@media (max-width: 768px) {
-  .admin-page {
-    padding: 12px;
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .admin-header {
+    flex-direction: column;
   }
 
-  .admin-page h2 {
-    font-size: 20px;
-    margin-bottom: 16px;
+  .admin-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-metrics,
+  .form-grid {
+    grid-template-columns: 1fr;
   }
 
-  .stats-cards {
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: 16px;
-  }
-
-  .stat-card {
-    flex: 1 1 calc(50% - 10px);
-    min-width: 140px;
-  }
-
-  .stat-card :deep(.el-card__body) {
-    gap: 10px;
-    padding: 12px;
-  }
-
-  .stat-icon {
-    width: 44px;
-    height: 44px;
-    font-size: 18px;
-  }
-
-  .stat-info .stat-num {
-    font-size: 22px;
-  }
-
-  .stat-info .stat-label {
-    font-size: 12px;
-  }
-
-  .table-section h3 {
-    font-size: 16px;
-  }
-
-  /* 表格横向滚动 */
-  .table-section :deep(.el-table) {
-    font-size: 12px;
-  }
-
-  .table-section :deep(.el-table__body-wrapper) {
-    overflow-x: auto;
+  .admin-panel {
+    padding: 0 12px 14px;
   }
 }
 </style>

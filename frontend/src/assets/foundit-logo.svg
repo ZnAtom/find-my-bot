@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1048" height="192" viewBox="0 0 1048 192" role="img" aria-labelledby="title desc">
+  <title id="title">FoundIt logo</title>
+  <desc id="desc">Primary FoundIt logo rebuilt with clean geometric curves.</desc>
+  <defs>
+    <linearGradient id="logo-primary-blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2A68F3"/>
+      <stop offset="1" stop-color="#1F5FEA"/>
+    </linearGradient>
+    <linearGradient id="logo-primary-teal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#25C7B7"/>
+      <stop offset="1" stop-color="#14B8A6"/>
+    </linearGradient>
+    <linearGradient id="logo-primary-navy" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#111B32"/>
+      <stop offset="1" stop-color="#0C162E"/>
+    </linearGradient>
+  </defs>
+  <path d="M 19.668 184.946 C 9.095 184.946 0.625 176.382 0.625 165.808 L 0.625 77.5 C 0.625 35.293 34.843 1.054 77.05 1.054 L 177.45 1.054 C 179.362 1.054 180.911 2.604 180.911 4.516 L 180.911 111.752 C 169.127 107.935 156.415 108.099 144.732 112.214 L 144.732 43.5 C 144.732 41.624 143.212 40.104 141.336 40.104 L 77.35 40.104 C 56.166 40.104 38.982 57.288 38.982 78.472 L 38.982 142.336 C 38.982 144.258 40.54 145.816 42.462 145.816 L 110.036 145.816 C 113.8 158.8 106 184.62 87.424 184.62 Z" fill="url(#logo-primary-blue)"/>
+  <circle cx="163.5" cy="165.5" r="25.5" fill="url(#logo-primary-teal)"/>
+  <path d="M 277.875 32.518 L 378.518 32.518 L 378.518 57.268 L 306.018 57.268 L 306.018 97.518 L 367.411 97.518 L 367.411 122.018 L 306.018 122.018 L 306.018 184.946 L 277.875 184.946 Z" fill="url(#logo-primary-navy)" fill-rule="evenodd"/>
+  <path d="M 506.196 128.858 C 506.196 160.999 479.357 187.054 446.25 187.054 C 413.143 187.054 386.304 160.999 386.304 128.858 C 386.304 96.716 413.143 70.661 446.25 70.661 C 479.357 70.661 506.196 96.716 506.196 128.858 Z M 478.98 128.86 C 478.98 147.649 464.326 162.88 446.25 162.88 C 428.174 162.88 413.52 147.649 413.52 128.86 C 413.52 110.071 428.174 94.84 446.25 94.84 C 464.326 94.84 478.98 110.071 478.98 128.86 Z" fill="url(#logo-primary-navy)" fill-rule="evenodd"/>
+  <path d="M 537.095 73.804 L 537.095 128.5 C 537.095 158.1 553.8 173.374 577.575 173.374 C 601.35 173.374 618.054 158.1 618.054 128.5 L 618.054 73.804" fill="none" stroke="url(#logo-primary-navy)" stroke-width="27.5" stroke-linecap="butt" stroke-linejoin="round"/>
+  <path d="M 665.268 184.946 L 665.268 128.1 C 665.268 98.5 682.547 84.375 706.322 84.375 C 730.097 84.375 747.375 98.5 747.375 128.1 L 747.375 184.946" fill="none" stroke="url(#logo-primary-navy)" stroke-width="27.5" stroke-linecap="butt" stroke-linejoin="round"/>
+  <path d="M 898.893 32.559 L 898.893 184.946 L 871.393 184.946 L 871.393 171.2 C 862.1 181.5 848.2 187.018 832.5 187.018 C 801.6 187.018 778.196 162.2 778.196 128.9 C 778.196 95.6 801.6 70.625 832.5 70.625 C 848.4 70.625 862.1 76.8 871.393 87.2 L 871.393 32.559 Z M 871.16 128.855 C 871.16 147.602 856.538 162.8 838.5 162.8 C 820.462 162.8 805.84 147.602 805.84 128.855 C 805.84 110.108 820.462 94.91 838.5 94.91 C 856.538 94.91 871.16 110.108 871.16 128.855 Z" fill="url(#logo-primary-navy)" fill-rule="evenodd"/>
+  <path d="M 930.946 32.411 L 958.875 32.411 L 958.875 184.946 L 930.946 184.946 Z" fill="url(#logo-primary-blue)" fill-rule="evenodd"/>
+  <path d="M 988.125 41.946 L 1015.8 41.946 L 1015.8 73.804 L 1046.9 73.804 L 1046.9 97.839 L 1015.8 97.839 L 1015.8 139.2 C 1015.8 148.304 1016.187 150.091 1018.625 155 C 1020.7 159.179 1025.802 161.628 1038.2 161.9 L 1046.8 161.9 L 1046.8 183.6 C 1041.8 185.2 1035.9 186.125 1029 186.125 C 1003.1 186.125 988.125 170.8 988.125 145 Z" fill="url(#logo-primary-blue)" fill-rule="evenodd"/>
+</svg>

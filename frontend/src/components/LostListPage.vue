@@ -1,131 +1,129 @@
 <template>
   <div class="lost-list-page">
-    <div class="page-header">
-      <h1 class="page-title">发现</h1>
-      <p class="page-subtitle">在这里浏览最新的失物与招领信息，或使用 AI 语义检索快速定位。</p>
-    </div>
-
-    <!-- 搜索与过滤面板 -->
-    <div class="filter-panel">
-      <div class="search-row">
-        <el-input
-          v-model="searchQuery"
-          placeholder="试试输入：“昨天在图书馆丢的黑色小米手机”"
-          size="large"
-          class="main-search-input"
-          @keyup.enter="handleSearch"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-        <el-radio-group v-model="searchMode" size="large" class="mode-toggle">
-          <el-radio-button value="keyword"><el-icon><Filter /></el-icon> 关键字</el-radio-button>
-          <el-radio-button value="semantic"><el-icon><MagicStick /></el-icon> AI语义</el-radio-button>
-        </el-radio-group>
-        <el-button type="primary" size="large" @click="handleSearch" :loading="loading" class="search-btn" round>
-          搜索
+    <div class="page-shell">
+      <header class="list-header">
+        <div>
+          <p class="page-kicker">Item Library</p>
+          <h1 class="page-title">物品库</h1>
+          <p class="page-subtitle">按状态、分类和描述检索校园里的寻物与招领记录。</p>
+        </div>
+        <el-button type="primary" round @click="router.push({ name: 'create' })">
+          <el-icon><Plus /></el-icon>
+          发布记录
         </el-button>
-      </div>
+      </header>
 
-      <div class="filter-row">
-        <div class="filter-group">
-          <span class="filter-label">状态:</span>
-          <el-radio-group v-model="filterStatus" @change="handleFilterChange">
-            <el-radio-button value="">全部</el-radio-button>
-            <el-radio-button value="lost">找物</el-radio-button>
-            <el-radio-button value="found">找主</el-radio-button>
-            <el-radio-button value="recovered">已找回</el-radio-button>
-            <el-radio-button value="expired">过期</el-radio-button>
-          </el-radio-group>
+      <section class="search-console surface-section">
+        <div class="search-line">
+          <el-input
+            v-model="searchQuery"
+            size="large"
+            class="main-search-input"
+            placeholder="输入物品、地点、颜色、品牌或完整描述"
+            clearable
+            @keyup.enter="handleSearch"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <el-segmented
+            v-model="searchMode"
+            :options="searchModeOptions"
+            size="large"
+            class="mode-segment"
+          />
+          <el-button type="primary" size="large" round :loading="loading" @click="handleSearch">
+            <el-icon><Search /></el-icon>
+            搜索
+          </el-button>
         </div>
-        
-        <div class="filter-group">
-          <span class="filter-label">分类:</span>
-          <el-select v-model="filterType" placeholder="全部分类" style="width: 140px" @change="handleFilterChange">
-            <el-option label="全部" value="" />
-            <el-option label="电子产品" value="电子产品" />
-            <el-option label="证件卡片" value="证件卡片" />
-            <el-option label="衣物鞋帽" value="衣物鞋帽" />
-            <el-option label="学习用品" value="学习用品" />
-            <el-option label="钱包钥匙" value="钱包钥匙" />
-            <el-option label="其他" value="其他" />
-          </el-select>
-        </div>
-      </div>
-    </div>
 
-    <!-- 结果提示 -->
-    <div v-if="!loading && searchQuery && searched" class="result-hint">
-      <el-icon><InfoFilled /></el-icon>
-      为您找到关于 <span class="highlight-text">"{{ searchQuery }}"</span> 的 <strong>{{ total }}</strong> 条记录
-      <el-tag v-if="searchMode === 'semantic'" effect="dark" round size="small" class="semantic-tag">
-        <el-icon><MagicStick /></el-icon> 语义匹配
-      </el-tag>
-    </div>
-
-    <!-- 列表 -->
-    <div class="items-container" v-loading="loading">
-      <el-row :gutter="24" v-if="items.length > 0">
-        <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="item in items" :key="item.id">
-          <div class="modern-card" @click="goDetail(item.id)">
-            <div class="card-image-wrapper">
-              <img v-if="item.image_url" :src="resolveImageUrl(item.image_url.split(',')[0])" alt="" class="card-img" />
-              <div v-else class="card-img-placeholder">
-                <el-icon size="48" color="#cbd5e1"><Picture /></el-icon>
-              </div>
-              <div :class="['status-badge', getStatusClass(item)]">
-                {{ getStatusText(item) }}
-              </div>
-            </div>
-            
-            <div class="card-content">
-              <div class="card-meta">
-                <span class="item-type">{{ getDirectionText(item) }}</span>
-                <span class="time-ago">{{ formatDate(item.created_at) }}</span>
-              </div>
-              
-              <h3 class="card-title" v-html="highlight(item.item_name)"></h3>
-              <p class="card-desc" v-html="highlight(item.description || '暂无描述')"></p>
-              
-              <div class="card-footer">
-                <span class="location">
-                  <el-icon><MapLocation /></el-icon> <span v-html="highlight(item.location || '未知地点')"></span>
-                </span>
-              </div>
-
-              <!-- 匹配度进度条 (仅语义搜索时显示) -->
-              <div v-if="item.similarity !== undefined" class="sim-score-box">
-                <div class="score-label">匹配度 {{ (item.similarity * 100).toFixed(0) }}%</div>
-                <el-progress 
-                  :percentage="item.similarity * 100" 
-                  :show-text="false" 
-                  :color="simColor(item.similarity)" 
-                  :stroke-width="4" 
-                />
-              </div>
-            </div>
+        <div class="filter-line">
+          <div class="filter-block">
+            <span>类型</span>
+            <el-segmented v-model="filterDirection" :options="directionOptions" @change="handleFilterChange" />
           </div>
-        </el-col>
-      </el-row>
+          <div class="filter-block">
+            <span>状态</span>
+            <el-segmented v-model="filterStatus" :options="statusOptions" @change="handleFilterChange" />
+          </div>
+          <div class="filter-block">
+            <span>分类</span>
+            <el-select v-model="filterType" placeholder="全部分类" clearable @change="handleFilterChange">
+              <el-option v-for="type in itemTypes" :key="type" :label="type" :value="type" />
+            </el-select>
+          </div>
+        </div>
+      </section>
 
-      <div v-else-if="!loading && total === 0" class="empty-state">
-        <el-empty description="没有找到相关的物品信息">
-          <el-button type="primary" round @click="resetSearch">清除搜索条件</el-button>
-        </el-empty>
+      <div v-if="!loading && searched" class="result-summary">
+        <div>
+          <strong>{{ total }}</strong>
+          <span>条结果</span>
+          <span v-if="searchQuery">，关键词为“{{ searchQuery }}”</span>
+        </div>
+        <el-tag v-if="searchMode === 'semantic'" effect="light" round>
+          <el-icon><MagicStick /></el-icon>
+          语义搜索
+        </el-tag>
+        <el-button text @click="resetSearch">清除条件</el-button>
       </div>
-    </div>
 
-    <!-- 分页 -->
-    <div v-if="!loading && total > pageSize" class="pagination-container">
-      <el-pagination
-        background
-        :current-page="page" 
-        :page-size="pageSize" 
-        :total="total"
-        layout="prev, pager, next"
-        @current-change="handlePageChange"
-      />
+      <section class="items-area" v-loading="loading">
+        <el-row v-if="items.length > 0" :gutter="18">
+          <el-col v-for="item in items" :key="item.id" :xs="24" :sm="12" :lg="6">
+            <article class="data-card item-card" @click="goDetail(item.id)">
+              <div class="image-frame item-image">
+                <img v-if="firstImage(item.image_url)" :src="resolveImageUrl(firstImage(item.image_url))" alt="物品图片" />
+                <div v-else class="image-placeholder">
+                  <el-icon size="34"><Picture /></el-icon>
+                </div>
+                <span :class="['status-chip', getStatusClass(item)]">{{ getStatusText(item) }}</span>
+              </div>
+              <div class="item-body">
+                <div class="item-meta">
+                  <span class="type-chip">{{ getDirectionText(item.direction) }}</span>
+                  <span>{{ formatDate(item.created_at) }}</span>
+                </div>
+                <h3 v-html="highlight(item.item_name)"></h3>
+                <p v-html="highlight(item.description || '暂无描述')"></p>
+                <div class="item-location">
+                  <el-icon><MapLocation /></el-icon>
+                  <span v-html="highlight(item.location || '未知地点')"></span>
+                </div>
+
+                <div v-if="item.similarity !== undefined" class="score-row">
+                  <span>匹配度 {{ (item.similarity * 100).toFixed(0) }}%</span>
+                  <el-progress
+                    :percentage="item.similarity * 100"
+                    :show-text="false"
+                    :stroke-width="5"
+                    :color="simColor(item.similarity)"
+                  />
+                </div>
+              </div>
+            </article>
+          </el-col>
+        </el-row>
+
+        <div v-else-if="!loading && total === 0" class="empty-panel surface-section">
+          <el-empty description="没有找到相关记录">
+            <el-button type="primary" round @click="resetSearch">查看全部</el-button>
+          </el-empty>
+        </div>
+      </section>
+
+      <div v-if="!loading && total > pageSize && searchMode !== 'semantic'" class="pagination-row">
+        <el-pagination
+          background
+          :current-page="page"
+          :page-size="pageSize"
+          :total="total"
+          layout="prev, pager, next"
+          @current-change="handlePageChange"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -133,14 +131,16 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Search, Filter, MagicStick, Picture, MapLocation, InfoFilled } from '@element-plus/icons-vue'
+import { Search, MagicStick, Picture, MapLocation, Plus } from '@element-plus/icons-vue'
 import { lostItemsApi, resolveImageUrl } from '../api'
 
 const searchQuery = ref('')
 const filterType = ref('')
 const filterStatus = ref('')
+const filterDirection = ref('')
 const searchMode = ref('keyword')
 const items = ref([])
+const allKeywordResults = ref([])
 const page = ref(1)
 const pageSize = ref(16)
 const total = ref(0)
@@ -150,8 +150,32 @@ const searched = ref(false)
 const route = useRoute()
 const router = useRouter()
 
+const searchModeOptions = [
+  { label: '关键字', value: 'keyword' },
+  { label: '语义', value: 'semantic' },
+]
+
+const statusOptions = [
+  { label: '全部', value: '' },
+  { label: '进行中', value: 'active' },
+  { label: '已找回', value: 'recovered' },
+  { label: '已过期', value: 'expired' },
+]
+
+const directionOptions = [
+  { label: '全部', value: '' },
+  { label: '寻物', value: 'lost' },
+  { label: '招领', value: 'found' },
+]
+
+const itemTypes = ['电子产品', '证件卡片', '衣物鞋帽', '学习用品', '钱包钥匙', '其他']
+
 onMounted(() => {
   const q = route.query.q
+  const direction = route.query.direction || route.query.post_type
+  if (direction === 'lost' || direction === 'found') {
+    filterDirection.value = direction
+  }
   if (q) {
     searchQuery.value = q
     handleSearch()
@@ -162,10 +186,12 @@ onMounted(() => {
 
 const loadItems = async () => {
   loading.value = true
+  allKeywordResults.value = []
   try {
     const params = { page: page.value, page_size: pageSize.value }
     if (filterType.value) params.item_type = filterType.value
-    Object.assign(params, buildStateParams())
+    if (filterStatus.value) params.status = filterStatus.value
+    if (filterDirection.value) params.direction = filterDirection.value
     const res = await lostItemsApi.getAll(params)
     items.value = res.data.items || []
     total.value = res.data.total || 0
@@ -178,8 +204,8 @@ const loadItems = async () => {
 }
 
 const handleSearch = async () => {
-  const keyword = searchQuery.value.trim()
-  if (!keyword) {
+  if (!searchQuery.value.trim() && !filterType.value && !filterStatus.value && !filterDirection.value) {
+    page.value = 1
     loadItems()
     return
   }
@@ -188,30 +214,28 @@ const handleSearch = async () => {
   searched.value = true
   page.value = 1
   try {
-    const filterParams = {
-      item_type: filterType.value || undefined,
-      ...buildStateParams(),
-    }
-
-    if (searchMode.value === 'semantic') {
+    if (searchMode.value === 'semantic' && searchQuery.value.trim()) {
       const res = await lostItemsApi.semanticSearch({
-        query: keyword,
-        ...filterParams,
-        limit: 100,
+        query: searchQuery.value,
+        limit: pageSize.value,
+        item_type: filterType.value || undefined,
+        status: filterStatus.value || undefined,
+        direction: filterDirection.value || undefined,
       })
-      const filteredResults = filterSemanticResults(res.data.results || [])
-      total.value = filteredResults.length
-      items.value = filteredResults.slice(0, pageSize.value)
+      items.value = res.data.results || []
+      total.value = items.value.length
+      allKeywordResults.value = []
     } else {
       const res = await lostItemsApi.search({
-        query: keyword,
-        ...filterParams,
-        limit: 100, // 关键字搜索目前后端未做分页，前端获取尽量多的然后截断
+        query: searchQuery.value || undefined,
+        item_type: filterType.value || undefined,
+        status: filterStatus.value || undefined,
+        direction: filterDirection.value || undefined,
+        limit: 200,
       })
-      // 简单前端分页处理
-      const allResults = res.data.results || []
-      total.value = allResults.length
-      items.value = allResults.slice(0, pageSize.value)
+      allKeywordResults.value = res.data.results || []
+      total.value = allKeywordResults.value.length
+      applyKeywordPage()
     }
   } catch (e) {
     console.error('搜索失败', e)
@@ -220,10 +244,16 @@ const handleSearch = async () => {
   }
 }
 
+const applyKeywordPage = () => {
+  const start = (page.value - 1) * pageSize.value
+  items.value = allKeywordResults.value.slice(start, start + pageSize.value)
+}
+
 const handleFilterChange = () => {
-  if (searchQuery.value.trim() || filterType.value || filterStatus.value) {
+  if (searchQuery.value.trim() || filterType.value || filterStatus.value || filterDirection.value) {
     handleSearch()
   } else {
+    page.value = 1
     loadItems()
   }
 }
@@ -232,53 +262,34 @@ const resetSearch = () => {
   searchQuery.value = ''
   filterType.value = ''
   filterStatus.value = ''
+  filterDirection.value = ''
+  searchMode.value = 'keyword'
+  page.value = 1
   loadItems()
 }
 
-const buildStateParams = () => {
-  if (filterStatus.value === 'lost') return { direction: 'lost', status: 'active' }
-  if (filterStatus.value === 'found') return { direction: 'found', status: 'active' }
-  if (filterStatus.value === 'recovered') return { status: 'recovered' }
-  if (filterStatus.value === 'expired') return { status: 'expired' }
-  return {}
-}
-
-const filterSemanticResults = (results) => {
-  return results.filter(item => {
-    if (filterType.value && item.item_type !== filterType.value) return false
-
-    const direction = item.direction || item.post_type
-    if (filterStatus.value === 'lost') {
-      return direction === 'lost' && item.status === 'active'
-    }
-    if (filterStatus.value === 'found') {
-      return direction === 'found' && item.status === 'active'
-    }
-    if (filterStatus.value === 'recovered') {
-      return item.status === 'recovered'
-    }
-    if (filterStatus.value === 'expired') {
-      return item.status === 'expired'
-    }
-    return true
-  })
+const firstImage = (url) => {
+  if (!url) return ''
+  return url.split(',').map(v => v.trim()).filter(Boolean)[0] || ''
 }
 
 const getStatusClass = (item) => {
   if (item.status === 'recovered') return 'recovered'
   if (item.status === 'expired') return 'expired'
-  return item.direction === 'found' ? 'found' : 'lost'
+  return item.direction === 'lost' ? 'lost' : 'found'
 }
 
 const getStatusText = (item) => {
   if (item.status === 'recovered') return '已找回'
-  if (item.status === 'expired') return '过期'
-  return item.direction === 'found' ? '找主' : '找物'
+  if (item.status === 'expired') return '已过期'
+  return item.direction === 'lost' ? '待找回' : '招领中'
 }
 
-const getDirectionText = (item) => item.direction === 'found' ? '找主' : '找物'
+const getDirectionText = (direction) => direction === 'found' ? '招领' : '寻物'
 
-const goDetail = (id) => { router.push({ name: 'detail', params: { id } }) }
+const goDetail = (id) => {
+  router.push({ name: 'detail', params: { id } })
+}
 
 const highlight = (text) => {
   if (!text || !searched.value || searchMode.value === 'semantic') return escapeHtml(text || '')
@@ -300,17 +311,16 @@ const escapeHtml = (str) => {
   return div.innerHTML
 }
 
-const simColor = (s) => { 
-  if (s >= 0.8) return 'var(--success-color)'
-  if (s >= 0.5) return 'var(--warning-color)'
-  return '#94a3b8' 
+const simColor = (score) => {
+  if (score >= 0.8) return 'var(--success-color)'
+  if (score >= 0.5) return 'var(--warning-color)'
+  return '#94a3b8'
 }
 
-const handlePageChange = (p) => { 
-  page.value = p
+const handlePageChange = (nextPage) => {
+  page.value = nextPage
   if (searched.value && searchMode.value === 'keyword') {
-    // keyword search fake pagination handled above if needed, but standard loadItems otherwise
-    // to keep it simple, just load items if not semantic (since semantic has no pagination yet)
+    applyKeywordPage()
   } else {
     loadItems()
   }
@@ -324,284 +334,200 @@ const formatDate = (dateStr) => {
 </script>
 
 <style scoped>
-.lost-list-page {
-  padding: 40px 20px;
-  min-height: calc(100vh - var(--header-height));
-}
-
-/* 内部内容区块限制宽度并居中，与首页布局保持一致 */
-.lost-list-page .page-header,
-.lost-list-page .filter-panel,
-.lost-list-page .result-hint,
-.lost-list-page .items-container,
-.lost-list-page .pagination-container {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.page-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-.page-title {
-  font-size: 32px;
-  font-weight: 800;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
-.page-subtitle {
-  color: var(--text-secondary);
-  font-size: 16px;
-}
-
-/* 过滤面板 */
-.filter-panel {
-  padding: 24px;
-  margin-bottom: 32px;
+.list-header {
   display: flex;
-  flex-direction: column;
-  gap: 20px;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 22px;
 }
 
-.search-row {
-  display: flex;
-  gap: 16px;
+.search-console {
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+.search-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
   align-items: center;
 }
 
-.main-search-input {
-  flex-grow: 1;
+.search-line > * {
+  min-width: 0;
 }
+
 .main-search-input :deep(.el-input__wrapper) {
-  border-radius: 20px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  min-height: 46px;
 }
 
-.search-btn {
-  padding: 0 32px;
-  font-weight: 600;
+.mode-segment {
+  min-width: 162px;
 }
 
-.filter-row {
+.filter-line {
   display: flex;
   flex-wrap: wrap;
-  gap: 24px;
+  gap: 18px;
   align-items: center;
-  padding-top: 20px;
+  margin-top: 16px;
+  padding-top: 16px;
   border-top: 1px solid var(--border-color);
 }
 
-.filter-group {
+.filter-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.filter-block > span {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.result-summary {
+  min-height: 46px;
   display: flex;
   align-items: center;
   gap: 12px;
-}
-.filter-label {
-  font-size: 14px;
-  font-weight: 600;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding: 0 4px;
   color: var(--text-secondary);
+  font-size: 14px;
 }
 
-.result-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
-  background: var(--surface-color);
-  border-radius: var(--border-radius-md);
-  margin-bottom: 24px;
-  color: var(--text-secondary);
-  font-size: 14px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.02);
-}
-.highlight-text {
-  color: var(--brand-primary);
-  font-weight: 700;
-}
-.result-hint strong {
+.result-summary strong {
   color: var(--text-primary);
-  font-size: 16px;
-}
-.semantic-tag {
-  background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
-  border: none;
+  font-size: 22px;
 }
 
-:deep(.hl) { 
-  background: rgba(245, 158, 11, 0.2); 
-  color: #b45309; 
-  padding: 0 2px; 
-  border-radius: 2px; 
+.result-summary > div {
+  flex: 1;
 }
 
-/* 卡片样式 (复用现代卡片) */
-.modern-card {
-  background: var(--card-bg);
-  border-radius: var(--border-radius-lg);
-  overflow: hidden;
-  cursor: pointer;
-  transition: all 0.2s ease-in-out;
-  box-shadow: var(--card-shadow);
-  border: 1px solid var(--card-border);
-  height: 100%;
+.item-card {
   display: flex;
   flex-direction: column;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
-.modern-card:hover {
-  box-shadow: var(--card-hover-shadow);
-  border-color: #d1d5db;
+.item-image {
+  height: 178px;
 }
 
-.card-image-wrapper {
-  position: relative;
-  height: 180px;
-  background: #f1f5f9;
-  overflow: hidden;
-}
-
-.card-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.card-img-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.status-badge {
+.item-image .status-chip {
   position: absolute;
   top: 12px;
   right: 12px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 700;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-.status-badge.lost { background: rgba(239, 68, 68, 0.9); color: white; }
-.status-badge.found { background: rgba(16, 185, 129, 0.9); color: white; }
-.status-badge.recovered { background: rgba(107, 114, 128, 0.9); color: white; }
-.status-badge.expired { background: rgba(120, 113, 108, 0.9); color: white; }
-
-.card-content {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  flex-grow: 1;
 }
 
-.card-meta {
+.item-body {
+  padding: 16px;
+}
+
+.item-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-}
-.item-type {
+  gap: 10px;
+  color: var(--text-tertiary);
   font-size: 12px;
-  font-weight: 600;
-  color: var(--brand-primary);
-  background: rgba(124, 58, 237, 0.1);
-  padding: 4px 8px;
-  border-radius: 6px;
-}
-.time-ago {
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-weight: 700;
 }
 
-.card-title {
-  font-size: 16px;
-  font-weight: 700;
+.item-body h3 {
+  margin: 13px 0 7px;
   color: var(--text-primary);
-  margin-bottom: 8px;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.card-desc {
-  font-size: 13px;
+.item-body p {
+  min-height: 42px;
+  margin: 0;
   color: var(--text-secondary);
-  line-height: 1.5;
-  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.55;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  flex-grow: 1;
 }
 
-.card-footer {
-  padding-top: 12px;
-  border-top: 1px solid var(--border-color);
-  margin-bottom: 8px;
-}
-
-.location {
-  font-size: 12px;
-  color: var(--text-secondary);
+.item-location {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.sim-score-box {
+.score-row {
   margin-top: 12px;
 }
-.score-label {
-  font-size: 11px;
-  font-weight: 600;
+
+.score-row span {
+  display: block;
+  margin-bottom: 6px;
   color: var(--text-secondary);
-  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
-.empty-state {
-  padding: 60px;
-  text-align: center;
+.empty-panel {
+  padding: 34px;
 }
 
-.pagination-container {
+.pagination-row {
   display: flex;
   justify-content: center;
-  margin-top: 40px;
+  margin-top: 10px;
 }
 
-/* 响应式 */
-@media (max-width: 768px) {
-  .lost-list-page {
-    padding: 20px 16px;
-  }
-  .search-row {
+@media (max-width: 900px) {
+  .list-header {
     flex-direction: column;
-    align-items: stretch;
   }
-  .search-btn {
+
+  .search-line {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-segment {
     width: 100%;
   }
-  .mode-toggle {
-    display: flex;
-  }
-  .mode-toggle :deep(.el-radio-button) {
-    flex: 1;
-  }
-  .mode-toggle :deep(.el-radio-button__inner) {
+}
+
+@media (max-width: 640px) {
+  .filter-block {
     width: 100%;
-  }
-  .filter-row {
-    flex-direction: column;
     align-items: flex-start;
+    flex-direction: column;
   }
-  .card-image-wrapper {
-    height: 140px;
+
+  .filter-block :deep(.el-segmented),
+  .filter-block :deep(.el-select) {
+    width: 100%;
+  }
+
+  .result-summary {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

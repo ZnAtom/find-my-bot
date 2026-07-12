@@ -25,6 +25,10 @@ api.interceptors.request.use(config => config, error => Promise.reject(error))
 api.interceptors.response.use(
   response => response,
   error => {
+    if (error.config?.silent) {
+      return Promise.reject(error)
+    }
+
     const status = error.response ? error.response.status : null
     if (status === 401) {
       // 401交由路由守卫处理，不全局报错以防止 /auth/me 首次加载出错
@@ -49,7 +53,7 @@ api.interceptors.response.use(
 // ===== API 方法 =====
 
 export const lostItemsApi = {
-  getAll: (params) => api.get('/lost-items', { params }),
+  getAll: (params, config = {}) => api.get('/lost-items', { params, ...config }),
   getById: (id) => api.get(`/lost-items/${id}`),
   create: (data) => api.post('/lost-items', data),
   matchCheck: (data) => api.post('/match-check', data),
@@ -72,7 +76,7 @@ export const statsApi = {
 
 export const authApi = {
   loginUrl: (next = '/') => `${apiBase}/api/auth/login?next=${encodeURIComponent(next)}`,
-  me: () => api.get('/auth/me'),
+  me: (config = {}) => api.get('/auth/me', config),
   logout: () => api.post('/auth/logout'),
   updateProfile: (data) => api.put('/auth/profile', data),
 }

@@ -17,7 +17,7 @@ export const useUserStore = defineStore('user', () => {
   const isAuthenticated = computed(() => Boolean(user.value))
   const isAdmin = computed(() => user.value?.role === 'admin')
 
-  // 当前生效的角色（受视角切换影响）
+  // 当前生效的角色（受模式切换影响）
   const effectiveRole = computed(() => {
     if (user.value?.role !== 'admin') return user.value?.role || 'user'
     return viewMode.value
@@ -31,7 +31,7 @@ export const useUserStore = defineStore('user', () => {
     isLoading.value = true
     fetchPromise = (async () => {
       try {
-        const res = await authApi.me()
+        const res = await authApi.me({ silent: true })
         user.value = res.data.user
         if (user.value?.role !== 'admin') {
           viewMode.value = 'user'

@@ -1,224 +1,202 @@
 <template>
   <div class="detail-page">
-    <!-- 加载骨架 -->
-    <template v-if="loading">
-      <div class="skeleton-container">
-        <el-skeleton animated>
-          <template #template>
-            <div class="detail-layout">
-              <el-skeleton-item variant="image" class="skeleton-image" />
-              <div class="skeleton-info">
-                <el-skeleton-item variant="text" style="width: 60%; height: 40px; margin-bottom: 20px" />
-                <el-skeleton-item variant="text" style="width: 30%; height: 24px; margin-bottom: 40px" />
-                <el-skeleton-item variant="text" style="width: 100%; height: 20px; margin-bottom: 12px" />
-                <el-skeleton-item variant="text" style="width: 80%; height: 20px; margin-bottom: 12px" />
-                <el-skeleton-item variant="text" style="width: 90%; height: 20px; margin-bottom: 12px" />
+    <div class="page-shell">
+      <template v-if="loading">
+        <div class="surface-section skeleton-wrap">
+          <el-skeleton animated>
+            <template #template>
+              <div class="detail-layout">
+                <el-skeleton-item variant="image" style="height: 460px" />
+                <div>
+                  <el-skeleton-item variant="text" style="width: 66%; height: 42px" />
+                  <el-skeleton-item variant="text" style="width: 42%; margin-top: 18px" />
+                  <el-skeleton-item variant="text" style="width: 100%; margin-top: 38px" />
+                  <el-skeleton-item variant="text" style="width: 80%; margin-top: 12px" />
+                </div>
+              </div>
+            </template>
+          </el-skeleton>
+        </div>
+      </template>
+
+      <template v-else-if="item">
+        <div class="top-bar">
+          <el-button round @click="goBack">
+            <el-icon><ArrowLeft /></el-icon>
+            返回
+          </el-button>
+        </div>
+
+        <section class="detail-layout">
+          <div class="gallery-panel surface-section">
+            <div class="image-frame main-image">
+              <el-image
+                v-if="currentImage"
+                class="main-image-content"
+                :src="resolveImageUrl(currentImage)"
+                fit="contain"
+                :preview-src-list="imageList.map(u => resolveImageUrl(u))"
+                :initial-index="currentImageIndex"
+                preview-teleported
+              >
+                <template #error>
+                  <div class="image-placeholder">
+                    <el-icon size="54"><Picture /></el-icon>
+                  </div>
+                </template>
+              </el-image>
+              <div v-else class="image-placeholder">
+                <el-icon size="54"><PictureFilled /></el-icon>
               </div>
             </div>
-          </template>
-        </el-skeleton>
-      </div>
-    </template>
 
-    <!-- 内容 -->
-    <template v-else-if="item">
-      <!-- 返回按钮 -->
-      <div class="back-bar">
-        <el-button class="back-btn" @click="goBack" round>
-          <el-icon><ArrowLeft /></el-icon> 返回列表
-        </el-button>
-      </div>
+            <div v-if="imageList.length > 1" class="thumb-row">
+              <button
+                v-for="(img, idx) in imageList"
+                :key="img"
+                :class="['thumb-button', { active: currentImageIndex === idx }]"
+                type="button"
+                @click="currentImageIndex = idx"
+              >
+                <img :src="resolveImageUrl(img)" alt="" />
+              </button>
+            </div>
+          </div>
 
-      <div class="detail-layout">
-        <!-- 左侧：图片 -->
-        <div class="detail-gallery glass-card">
-          <div class="image-showcase" v-if="imageList.length > 0">
-            <!-- 模糊背景层 -->
-            <div 
-              class="image-backdrop" 
-              :style="{ backgroundImage: `url(${resolveImageUrl(currentImage)})` }"
-            ></div>
-            <el-image
-              class="main-image-content"
-              :src="resolveImageUrl(currentImage)"
-              fit="contain"
-              :preview-src-list="imageList.map(u => resolveImageUrl(u))"
-              :initial-index="currentImageIndex"
-              preview-teleported
-            >
-              <template #error>
-                <div class="image-error">
-                  <el-icon size="64" color="#cbd5e1"><Picture /></el-icon>
-                  <span>图片加载失败</span>
-                </div>
+          <div class="info-stack">
+            <header class="item-header">
+              <div class="badge-row">
+                <span :class="['status-chip', getStatusClass(item)]">{{ getStatusText(item) }}</span>
+                <span class="type-chip">{{ getDirectionText(item.direction) }}</span>
+              </div>
+              <h1>{{ item.item_name }}</h1>
+              <p>发布于 {{ formatDate(item.created_at) }}</p>
+            </header>
+
+            <div v-if="userStore.isAuthenticated" class="action-panel surface-section">
+              <template v-if="item.status === 'active'">
+                <el-button v-if="canManageItem" type="success" round @click="handleMarkResolved" :loading="actionLoading">
+                  <el-icon><CircleCheck /></el-icon>
+                  标记为已找回
+                </el-button>
+                <el-button type="primary" plain round @click="handleClaim" :loading="actionLoading">
+                  <el-icon><ChatLineRound /></el-icon>
+                  联系发布者
+                </el-button>
               </template>
-            </el-image>
-          </div>
-          <div class="image-showcase no-image" v-else>
-            <el-icon size="80" color="#e2e8f0"><PictureFilled /></el-icon>
-            <span class="no-img-text">该信息未上传图片</span>
-          </div>
+              <template v-else>
+                <el-button v-if="canManageItem" type="warning" round @click="handleMarkPending" :loading="actionLoading">
+                  <el-icon><WarningFilled /></el-icon>
+                  标记为进行中
+                </el-button>
+              </template>
+            </div>
 
-          <!-- 缩略图 -->
-          <div class="thumbnails" v-if="imageList.length > 1">
-            <div
-              v-for="(img, idx) in imageList"
-              :key="idx"
-              :class="['thumb', { active: idx === currentImageIndex }]"
-              @click="currentImageIndex = idx"
-            >
-              <img :src="resolveImageUrl(img)" alt="缩略图" />
+            <section class="surface-section info-card">
+              <h2><el-icon><Document /></el-icon> 物品信息</h2>
+              <p class="description">{{ item.description || '发布者未填写详细描述。' }}</p>
+              <div class="info-grid">
+                <div class="info-row">
+                  <el-icon><MapLocation /></el-icon>
+                  <span>
+                    <small>地点</small>
+                    <strong>{{ item.location || '未知地点' }}</strong>
+                  </span>
+                </div>
+                <div class="info-row">
+                  <el-icon><Clock /></el-icon>
+                  <span>
+                    <small>相关时间</small>
+                    <strong>{{ item.lost_time ? formatDate(item.lost_time) : '未填写' }}</strong>
+                  </span>
+                </div>
+                <div class="info-row">
+                  <el-icon><CollectionTag /></el-icon>
+                  <span>
+                    <small>分类</small>
+                    <strong>{{ item.item_type || '未分类' }}</strong>
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            <section class="surface-section info-card">
+              <h2><el-icon><User /></el-icon> 联系方式</h2>
+              <div class="contact-grid">
+                <div class="contact-row">
+                  <span>联系人</span>
+                  <strong>{{ item.contact_person || '未填写' }}</strong>
+                </div>
+                <div v-if="item.contact_phone" class="contact-row">
+                  <span>电话</span>
+                  <strong>{{ item.contact_phone }}</strong>
+                </div>
+                <div v-if="item.contact_qq" class="contact-row">
+                  <span>QQ</span>
+                  <strong>{{ item.contact_qq }}</strong>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section v-if="similarItems.length > 0" class="similar-section">
+          <div class="section-heading">
+            <div>
+              <p class="page-kicker">Related</p>
+              <h2>相关记录</h2>
             </div>
           </div>
+          <el-row :gutter="18">
+            <el-col v-for="sim in similarItems" :key="sim.id" :xs="24" :sm="12" :lg="6">
+              <article class="data-card sim-card" @click="router.push({ name: 'detail', params: { id: sim.id } })">
+                <div class="image-frame sim-image">
+                  <img v-if="firstImage(sim.image_url)" :src="resolveImageUrl(firstImage(sim.image_url))" alt="" />
+                  <div v-else class="image-placeholder"><el-icon><Picture /></el-icon></div>
+                </div>
+                <div class="sim-body">
+                  <h3>{{ sim.item_name }}</h3>
+                  <p><el-icon><MapLocation /></el-icon>{{ sim.location || '未知地点' }}</p>
+                  <div class="score-line">
+                    <span>匹配度 {{ (sim.similarity * 100).toFixed(0) }}%</span>
+                    <el-progress :percentage="sim.similarity * 100" :show-text="false" :stroke-width="5" :color="simColor(sim.similarity)" />
+                  </div>
+                </div>
+              </article>
+            </el-col>
+          </el-row>
+        </section>
+      </template>
+
+      <template v-else>
+        <div class="surface-section missing-state">
+          <el-empty description="没有找到这条记录">
+            <el-button type="primary" round @click="goBack">返回</el-button>
+          </el-empty>
         </div>
+      </template>
+    </div>
 
-        <!-- 右侧：信息 -->
-        <div class="detail-info">
-          <div class="info-header">
-            <div class="badges">
-              <span :class="['status-badge', getStatusClass(item)]">
-                {{ getStatusText(item) }}
-              </span>
-              <span class="type-badge">{{ getDirectionText(item) }}</span>
-            </div>
-            <h1 class="item-title">{{ item.item_name }}</h1>
-            <div class="time-meta">发布于 {{ formatDate(item.created_at) }}</div>
-          </div>
-
-          <!-- 操作区 -->
-          <div class="action-card glass-card" v-if="userStore.isAuthenticated">
-            <template v-if="item.status === 'active'">
-              <el-button v-if="canManageItem" type="success" size="large" @click="handleMarkFound" :loading="actionLoading" class="action-btn" round>
-                <el-icon><CircleCheck /></el-icon> 标记为已找回
-              </el-button>
-              <el-button type="primary" size="large" plain @click="handleClaim" :loading="actionLoading" class="action-btn" round>
-                <el-icon><Star /></el-icon> 联系发布者
-              </el-button>
-            </template>
-            <template v-else>
-              <el-button v-if="canManageItem" type="warning" size="large" @click="handleMarkLost" :loading="actionLoading" class="action-btn" round>
-                <el-icon><WarningFilled /></el-icon> 重新加入匹配池
-              </el-button>
-            </template>
-          </div>
-
-          <!-- 详情信息卡片 -->
-          <div class="info-card glass-card">
-            <h3 class="card-heading"><el-icon><Document /></el-icon> 详细特征</h3>
-            <p class="desc-text">{{ item.description || '主人没有留下任何描述哦。' }}</p>
-            
-            <div class="meta-grid">
-              <div class="meta-item">
-                <el-icon><MapLocation /></el-icon>
-                <div class="meta-content">
-                  <span class="meta-label">丢失/拾获地点</span>
-                  <span class="meta-val">{{ item.location || '未知' }}</span>
-                </div>
-              </div>
-              <div class="meta-item" v-if="item.lost_time">
-                <el-icon><Clock /></el-icon>
-                <div class="meta-content">
-                  <span class="meta-label">相关时间</span>
-                  <span class="meta-val">{{ formatDate(item.lost_time) }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 联系方式卡片 -->
-          <div class="info-card glass-card contact-card">
-            <h3 class="card-heading"><el-icon><ChatLineRound /></el-icon> 联系方式</h3>
-            <div class="contact-list">
-              <div class="contact-row">
-                <div class="contact-icon user-icon"><el-icon><User /></el-icon></div>
-                <div class="contact-details">
-                  <span class="c-label">联系人</span>
-                  <span class="c-val">{{ item.contact_person || '匿名' }}</span>
-                </div>
-              </div>
-              <div class="contact-row" v-if="item.contact_phone">
-                <div class="contact-icon phone-icon"><el-icon><Phone /></el-icon></div>
-                <div class="contact-details">
-                  <span class="c-label">电话号码</span>
-                  <span class="c-val">{{ item.contact_phone }}</span>
-                </div>
-              </div>
-              <div class="contact-row" v-if="item.contact_qq">
-                <div class="contact-icon qq-icon"><el-icon><ChatDotRound /></el-icon></div>
-                <div class="contact-details">
-                  <span class="c-label">QQ号码</span>
-                  <span class="c-val">{{ item.contact_qq }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 相似物品推荐 -->
-      <div class="similar-section" v-if="similarItems.length > 0">
-        <div class="similar-header">
-          <h2><el-icon><MagicStick /></el-icon> AI 相似推荐</h2>
-          <p>基于多模态向量检索，这些物品可能与您找的有关联</p>
-        </div>
-        <el-row :gutter="24">
-          <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="sim in similarItems" :key="sim.id">
-            <div class="modern-card" @click="router.push({ name: 'detail', params: { id: sim.id } })">
-              <div class="card-img-wrap">
-                <img v-if="sim.image_url" :src="resolveImageUrl(sim.image_url.split(',')[0])" alt="" />
-                <div v-else class="img-placeholder"><el-icon size="40"><Picture /></el-icon></div>
-              </div>
-              <div class="card-content">
-                <h4 class="sim-title">{{ sim.item_name }}</h4>
-                <div class="sim-location"><el-icon><MapLocation /></el-icon> {{ sim.location || '未知地点' }}</div>
-                <div class="sim-score-box">
-                  <div class="score-label">匹配度 {{ (sim.similarity * 100).toFixed(0) }}%</div>
-                  <el-progress 
-                    :percentage="sim.similarity * 100" 
-                    :show-text="false" 
-                    :color="simColor(sim.similarity)" 
-                    :stroke-width="6" 
-                  />
-                </div>
-              </div>
-            </div>
-          </el-col>
-        </el-row>
-      </div>
-    </template>
-
-    <!-- 错误状态 -->
-    <template v-else>
-      <div class="error-state glass-card">
-        <el-empty description="哎呀，您要找的信息似乎已经飞到了外太空...">
-          <el-button type="primary" size="large" round @click="goBack">返回安全地带</el-button>
-        </el-empty>
-      </div>
-    </template>
-
-    <!-- 认领对话框 -->
-    <el-dialog v-model="claimDialogVisible" title="认领确认" width="480px" class="modern-dialog">
+    <el-dialog v-model="claimDialogVisible" title="联系发布者" width="520px">
       <div class="claim-content">
-        <div class="claim-icon"><el-icon><InfoFilled /></el-icon></div>
-        <h3 class="claim-target">您正在认领：{{ item?.item_name }}</h3>
-        <p class="claim-note">请如实填写您的联系方式，确认后我们将通过系统发送消息给发布者，请您准备好相关的所有权证明以便核实。</p>
+        <p>请留下您的称呼和联系方式，方便后续核对。</p>
         <el-form class="claim-form">
           <el-form-item>
-            <el-input v-model="claimForm.name" placeholder="您的称呼（如王同学）" size="large">
+            <el-input v-model="claimForm.name" placeholder="您的称呼" size="large">
               <template #prefix><el-icon><User /></el-icon></template>
             </el-input>
           </el-form-item>
           <el-form-item>
-            <el-input v-model="claimForm.contact" placeholder="您的手机号或微信号" size="large">
+            <el-input v-model="claimForm.contact" placeholder="手机号或微信号" size="large">
               <template #prefix><el-icon><Phone /></el-icon></template>
             </el-input>
           </el-form-item>
         </el-form>
       </div>
       <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="claimDialogVisible = false" round size="large">暂不认领</el-button>
-          <el-button type="primary" @click="confirmClaim" :loading="actionLoading" round size="large">发送认领请求</el-button>
+        <div class="dialog-actions">
+          <el-button @click="claimDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmClaim" :loading="actionLoading">确认</el-button>
         </div>
       </template>
     </el-dialog>
@@ -230,17 +208,25 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  ArrowLeft, Picture, PictureFilled, MapLocation, User, Phone, ChatDotRound,
-  CircleCheck, WarningFilled, Star, InfoFilled, Document, Clock, ChatLineRound, MagicStick
+  ArrowLeft,
+  ChatLineRound,
+  CircleCheck,
+  Clock,
+  CollectionTag,
+  Document,
+  MapLocation,
+  Phone,
+  Picture,
+  PictureFilled,
+  User,
+  WarningFilled,
 } from '@element-plus/icons-vue'
 import { lostItemsApi, resolveImageUrl } from '../api'
 import { useUserStore } from '../stores/user'
 
 const userStore = useUserStore()
-
 const route = useRoute()
 const router = useRouter()
-
 const item = ref(null)
 const loading = ref(true)
 const actionLoading = ref(false)
@@ -251,7 +237,7 @@ const claimForm = ref({ name: '', contact: '' })
 
 const imageList = computed(() => {
   if (!item.value?.image_url) return []
-  return item.value.image_url.split(',').filter(Boolean)
+  return item.value.image_url.split(',').map(v => v.trim()).filter(Boolean)
 })
 
 const currentImage = computed(() => {
@@ -264,20 +250,6 @@ const canManageItem = computed(() => {
   return userStore.isAdmin || item.value.user_id === userStore.user?.id
 })
 
-const getStatusClass = (target) => {
-  if (target.status === 'recovered') return 'recovered'
-  if (target.status === 'expired') return 'expired'
-  return target.direction === 'found' ? 'found' : 'lost'
-}
-
-const getStatusText = (target) => {
-  if (target.status === 'recovered') return '✅ 已找回'
-  if (target.status === 'expired') return '⌛ 过期'
-  return target.direction === 'found' ? '📢 找主' : '🔍 找物'
-}
-
-const getDirectionText = (target) => target.direction === 'found' ? '找主' : '找物'
-
 onMounted(() => {
   loadItem()
 })
@@ -288,12 +260,11 @@ watch(() => route.params.id, () => {
 
 const loadItem = async () => {
   loading.value = true
+  currentImageIndex.value = 0
   try {
-    const id = route.params.id
-    const res = await lostItemsApi.getById(id)
+    const res = await lostItemsApi.getById(route.params.id)
     item.value = res.data
-    // 加载相似物品
-    loadSimilar()
+    await loadSimilar()
   } catch (e) {
     item.value = null
     console.error('加载详情失败', e)
@@ -305,15 +276,23 @@ const loadItem = async () => {
 const loadSimilar = async () => {
   if (!item.value) return
   try {
+    const oppositeDirection = item.value.direction === 'lost' ? 'found' : 'lost'
     const res = await lostItemsApi.semanticSearch({
-      query: item.value.item_name + ' ' + (item.value.description || ''),
+      query: `${item.value.item_name} ${item.value.description || ''}`,
+      status: 'active',
+      direction: oppositeDirection,
       limit: 5,
     })
-    // 过滤掉自身
     similarItems.value = (res.data.results || []).filter(s => s.id !== item.value.id).slice(0, 4)
   } catch (e) {
-    console.error('加载相似物品失败', e)
+    similarItems.value = []
+    console.error('加载相关记录失败', e)
   }
+}
+
+const firstImage = (url) => {
+  if (!url) return ''
+  return url.split(',').map(v => v.trim()).filter(Boolean)[0] || ''
 }
 
 const goBack = () => {
@@ -324,18 +303,22 @@ const goBack = () => {
   }
 }
 
-const handleMarkFound = async () => {
+const handleMarkResolved = async () => {
   try {
-    await ElMessageBox.confirm('确认将该物品标记为"已找回"？标记后该信息仍会保留。', '操作确认', { 
-      type: 'success', confirmButtonText: '确认', cancelButtonText: '取消', center: true
+    await ElMessageBox.confirm('确认将这条记录标记为已解决？', '操作确认', {
+      type: 'success',
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
     })
-  } catch { return }
+  } catch {
+    return
+  }
 
   actionLoading.value = true
   try {
     await lostItemsApi.update(item.value.id, { status: 'recovered' })
     item.value.status = 'recovered'
-    ElMessage.success('已成功标记为"已找回"')
+    ElMessage.success('已标记为已找回')
   } catch (e) {
     ElMessage.error('操作失败')
   } finally {
@@ -343,18 +326,12 @@ const handleMarkFound = async () => {
   }
 }
 
-const handleMarkLost = async () => {
-  try {
-    await ElMessageBox.confirm('确认将该物品重新加入匹配池？', '操作确认', {
-      type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消', center: true
-    })
-  } catch { return }
-
+const handleMarkPending = async () => {
   actionLoading.value = true
   try {
     await lostItemsApi.update(item.value.id, { status: 'active' })
     item.value.status = 'active'
-    ElMessage.success('已重新加入匹配池')
+    ElMessage.success('已标记为进行中')
   } catch (e) {
     ElMessage.error('操作失败')
   } finally {
@@ -373,15 +350,13 @@ const handleClaim = () => {
 
 const confirmClaim = async () => {
   if (!claimForm.value.name.trim() || !claimForm.value.contact.trim()) {
-    ElMessage.warning('请完整填写联系信息')
+    ElMessage.warning('请填写联系信息')
     return
   }
   actionLoading.value = true
   try {
     claimDialogVisible.value = false
-    ElMessage.success('认领请求已记录，请通过页面联系方式联系发布者核实')
-  } catch (e) {
-    ElMessage.error('操作失败')
+    ElMessage.success('已记录，请按页面联系方式联系发布者核对')
   } finally {
     actionLoading.value = false
   }
@@ -390,8 +365,11 @@ const confirmClaim = async () => {
 const formatDate = (dateStr) => {
   if (!dateStr) return '未知'
   return new Date(dateStr).toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
   })
 }
 
@@ -400,463 +378,273 @@ const simColor = (score) => {
   if (score >= 0.5) return 'var(--warning-color)'
   return '#94a3b8'
 }
+
+const getDirectionText = (direction) => direction === 'found' ? '招领' : '寻物'
+
+const getStatusClass = (row) => {
+  if (row.status === 'recovered') return 'recovered'
+  if (row.status === 'expired') return 'expired'
+  return row.direction === 'lost' ? 'lost' : 'found'
+}
+
+const getStatusText = (row) => {
+  if (row.status === 'recovered') return '已找回'
+  if (row.status === 'expired') return '已过期'
+  return row.direction === 'lost' ? '待找回' : '招领中'
+}
 </script>
 
 <style scoped>
-.detail-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 40px 20px;
+.top-bar {
+  margin-bottom: 18px;
 }
 
-.back-bar {
-  margin-bottom: 24px;
-}
-.back-btn {
-  font-weight: 600;
-  padding: 8px 20px;
+.skeleton-wrap {
+  padding: 24px;
 }
 
-/* 骨架屏 */
-.skeleton-container {
-  padding: 20px 0;
-}
-.skeleton-image {
-  width: 100%;
-  height: 500px;
-  border-radius: var(--border-radius-lg);
-}
-.skeleton-info {
-  padding: 20px 0;
-}
-
-/* 内容布局 */
 .detail-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 40px;
-  margin-bottom: 60px;
+  grid-template-columns: minmax(0, 1fr) 430px;
+  gap: 18px;
+  align-items: start;
 }
 
-/* 左侧图片区 */
-.detail-gallery {
-  position: sticky;
-  top: calc(var(--header-height) + 40px);
-  padding: 16px;
-  border-radius: 24px;
-  align-self: start;
+.gallery-panel {
+  padding: 14px;
 }
 
-.image-showcase {
-  position: relative;
-  width: 100%;
-  height: 480px;
-  border-radius: 16px;
-  overflow: hidden;
+.main-image {
+  height: 520px;
   background: #0f172a;
 }
 
-.image-backdrop {
-  position: absolute;
-  top: -20px;
-  left: -20px;
-  right: -20px;
-  bottom: -20px;
-  background-size: cover;
-  background-position: center;
-  filter: blur(40px) brightness(0.6);
-  z-index: 0;
-}
-
 .main-image-content {
-  position: relative;
-  z-index: 1;
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-.no-image {
-  background: var(--background-color);
+.thumb-row {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  border: 2px dashed var(--border-color);
-}
-.no-img-text {
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.thumbnails {
-  display: flex;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 10px;
+  margin-top: 12px;
   overflow-x: auto;
-  padding-bottom: 8px;
 }
 
-.thumb {
-  width: 80px;
-  height: 80px;
-  border-radius: 12px;
+.thumb-button {
+  width: 74px;
+  height: 74px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--border-radius-md);
   overflow: hidden;
+  background: var(--surface-muted);
   cursor: pointer;
-  border: 3px solid transparent;
-  opacity: 0.6;
-  transition: all 0.3s;
-  flex-shrink: 0;
+  opacity: 0.72;
 }
-.thumb:hover {
-  opacity: 0.8;
-}
-.thumb.active {
-  border-color: var(--brand-primary);
+
+.thumb-button.active {
+  border-color: var(--foundit-blue);
   opacity: 1;
 }
-.thumb img {
+
+.thumb-button img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-/* 右侧信息区 */
-.detail-info {
+.info-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.item-header {
+  padding: 4px 0 2px;
+}
+
+.badge-row {
   display: flex;
-  flex-direction: column;
-  gap: 24px;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
-.info-header {
-  margin-bottom: 8px;
-}
-
-.badges {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.status-badge {
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 700;
-}
-.status-badge.lost {
-  background: rgba(239, 68, 68, 0.1);
-  color: var(--danger-color);
-}
-.status-badge.found {
-  background: rgba(16, 185, 129, 0.1);
-  color: var(--success-color);
-}
-.status-badge.recovered {
-  background: rgba(107, 114, 128, 0.12);
-  color: var(--text-secondary);
-}
-.status-badge.expired {
-  background: rgba(120, 113, 108, 0.12);
-  color: #78716c;
-}
-
-.type-badge {
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 600;
-  background: var(--surface-color);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-}
-
-.item-title {
-  font-size: 36px;
-  font-weight: 800;
+.item-header h1 {
+  margin: 0;
   color: var(--text-primary);
-  margin-bottom: 12px;
-  line-height: 1.3;
+  font-size: clamp(28px, 4vw, 38px);
+  line-height: 1.18;
+  font-weight: 800;
 }
 
-.time-meta {
+.item-header p {
+  margin: 10px 0 0;
   color: var(--text-secondary);
   font-size: 14px;
 }
 
-.action-card {
-  padding: 24px;
+.action-panel {
   display: flex;
-  gap: 16px;
   flex-wrap: wrap;
-}
-.action-btn {
-  font-weight: 600;
-  flex: 1;
-  min-width: 200px;
+  gap: 10px;
+  padding: 14px;
 }
 
 .info-card {
-  padding: 32px;
+  padding: 18px;
 }
 
-.card-heading {
-  font-size: 18px;
-  font-weight: 700;
+.info-card h2 {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 20px;
-  color: var(--text-primary);
-}
-.card-heading .el-icon {
-  color: var(--brand-primary);
+  margin: 0 0 14px;
+  font-size: 18px;
+  font-weight: 800;
 }
 
-.desc-text {
-  font-size: 16px;
-  line-height: 1.8;
+.description {
+  margin: 0;
   color: var(--text-secondary);
+  line-height: 1.7;
   white-space: pre-wrap;
-  margin-bottom: 32px;
 }
 
-.meta-grid {
+.info-grid,
+.contact-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: 10px;
+  margin-top: 18px;
 }
 
-.meta-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-.meta-item .el-icon {
-  font-size: 24px;
-  color: var(--brand-primary);
-  margin-top: 4px;
-}
-.meta-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.meta-label {
-  font-size: 12px;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.meta-val {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-/* 联系方式 */
-.contact-list {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
+.info-row,
 .contact-row {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.5);
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  transition: transform 0.2s;
-}
-.contact-row:hover {
-  background: var(--surface-color);
-}
-.contact-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  color: white;
-}
-.user-icon { background: linear-gradient(135deg, #60a5fa, #3b82f6); }
-.phone-icon { background: linear-gradient(135deg, #34d399, #10b981); }
-.qq-icon { background: linear-gradient(135deg, #f472b6, #db2777); }
-
-.contact-details {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.c-label {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-.c-val {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-/* 相似推荐 */
-.similar-section {
-  margin-top: 80px;
-}
-.similar-header {
-  text-align: center;
-  margin-bottom: 40px;
-}
-.similar-header h2 {
-  font-size: 28px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   gap: 12px;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
-.similar-header p {
-  color: var(--text-secondary);
-  font-size: 16px;
-}
-
-.modern-card {
-  background: var(--surface-color);
-  border-radius: var(--border-radius-lg);
-  overflow: hidden;
-  cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.03);
+  padding: 12px;
   border: 1px solid var(--border-color);
-  height: 100%;
-  display: flex;
-  flex-direction: column;
+  border-radius: var(--border-radius-md);
+  background: var(--surface-muted);
 }
-.modern-card:hover {
-  box-shadow: 0 10px 25px rgba(0,0,0,0.06);
+
+.info-row .el-icon {
+  color: var(--foundit-blue);
 }
-.card-img-wrap {
-  height: 160px;
-  background: var(--background-color);
-  overflow: hidden;
+
+.info-row small,
+.info-row strong,
+.contact-row span,
+.contact-row strong {
+  display: block;
 }
-.card-img-wrap img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.5s;
-}
-.modern-card:hover .card-img-wrap img {
-  opacity: 0.9;
-}
-.img-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #cbd5e1;
-}
-.card-content {
-  padding: 20px;
-}
-.sim-title {
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  color: var(--text-primary);
-}
-.sim-location {
-  font-size: 13px;
+
+.info-row small,
+.contact-row span {
   color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 16px;
-}
-.sim-score-box {
-  margin-top: auto;
-}
-.score-label {
   font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
 }
 
-/* 错误状态 */
-.error-state {
-  padding: 80px 20px;
-  text-align: center;
-  border-radius: var(--border-radius-lg);
-}
-
-/* 对话框 */
-.claim-content {
-  text-align: center;
-  padding: 20px 0;
-}
-.claim-icon {
-  margin-bottom: 24px;
-  display: inline-flex;
-  padding: 24px;
-  background: rgba(99, 102, 241, 0.1);
-  border-radius: 50%;
-}
-.claim-icon .el-icon {
-  font-size: 48px;
-  color: var(--brand-primary);
-}
-.claim-target {
-  font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 12px;
+.info-row strong,
+.contact-row strong {
+  margin-top: 3px;
   color: var(--text-primary);
-}
-.claim-note {
   font-size: 14px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  margin-bottom: 32px;
-}
-.claim-form {
-  text-align: left;
-}
-.dialog-footer {
-  display: flex;
-  gap: 16px;
-  justify-content: center;
-  width: 100%;
-}
-.dialog-footer .el-button {
-  flex: 1;
 }
 
-@media (max-width: 768px) {
+.contact-row {
+  justify-content: space-between;
+}
+
+.similar-section {
+  margin-top: 30px;
+}
+
+.section-heading {
+  margin-bottom: 14px;
+}
+
+.section-heading h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.sim-card {
+  margin-bottom: 18px;
+}
+
+.sim-image {
+  height: 150px;
+}
+
+.sim-body {
+  padding: 14px;
+}
+
+.sim-body h3 {
+  margin: 0 0 8px;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sim-body p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.score-line {
+  margin-top: 12px;
+}
+
+.score-line span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.missing-state {
+  padding: 40px;
+}
+
+.claim-content p {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 980px) {
   .detail-layout {
     grid-template-columns: 1fr;
-    gap: 24px;
   }
-  .detail-gallery {
-    position: static;
-    padding: 8px;
+
+  .main-image {
+    height: 420px;
   }
-  .image-showcase {
-    height: 320px;
+}
+
+@media (max-width: 640px) {
+  .main-image {
+    height: 310px;
   }
-  .item-title {
-    font-size: 28px;
-  }
-  .meta-grid {
-    grid-template-columns: 1fr;
+
+  .action-panel {
+    display: grid;
   }
 }
 </style>
