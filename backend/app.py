@@ -23,6 +23,7 @@ from auth import (
     get_casdoor_userinfo,
     get_current_user,
     get_or_create_user,
+    get_optional_user,
     make_login_url,
     new_state,
     require_admin,
@@ -324,6 +325,51 @@ def none_if_empty(val):
     return val if val not in (None, '') else None
 
 
+def _get_claim_item_ids_for_user(cur, user: Optional[dict]) -> set[int]:
+    if not user:
+        return set()
+    try:
+        cur.execute(
+            """SELECT item_id
+               FROM claim_requests
+               WHERE requester_user_id = %s OR owner_user_id = %s""",
+            (user["id"], user["id"]),
+        )
+        return {row[0] for row in cur.fetchall()}
+    except psycopg2.errors.UndefinedTable:
+        cur.connection.rollback()
+        return set()
+
+
+def _can_view_item_contact(item: dict, user: Optional[dict], claim_item_ids: Optional[set[int]] = None) -> bool:
+    if not item:
+        return False
+    visibility = item.get("contact_visibility") or "private"
+    if visibility == "public":
+        return True
+    if not user:
+        return False
+    if user.get("role") == "admin" or item.get("user_id") == user.get("id"):
+        return True
+    if visibility == "logged_in":
+        return True
+    if claim_item_ids and item.get("id") in claim_item_ids:
+        return True
+    return False
+
+
+def serialize_item_for_user(row, user: Optional[dict], claim_item_ids: Optional[set[int]] = None):
+    item = serialize_row(row)
+    if item is None:
+        return None
+    if not _can_view_item_contact(item, user, claim_item_ids):
+        item["contact_person"] = "匿名"
+        item["contact_phone"] = None
+        item["contact_qq"] = None
+        item["storage_location"] = None
+    return item
+
+
 DIRECTION_ALIASES = {
     "lost": "lost",
     "find_item": "lost",
@@ -520,8 +566,10 @@ class LostItemCreate(BaseModel):
     post_type: Optional[str] = None
     description: Optional[str] = None
     location: Optional[str] = None
+    storage_location: Optional[str] = None
     lost_time: Optional[str] = None
     status: Optional[str] = None
+    contact_visibility: Optional[str] = None
     image_url: Optional[str] = None
     contact_person: str
     contact_phone: Optional[str] = None
@@ -534,8 +582,10 @@ class LostItemUpdate(BaseModel):
     post_type: Optional[str] = None
     description: Optional[str] = None
     location: Optional[str] = None
+    storage_location: Optional[str] = None
     found_time: Optional[str] = None
     status: Optional[str] = None
+    contact_visibility: Optional[str] = None
     image_url: Optional[str] = None
 
 class LostItemResponse(BaseModel):
@@ -545,9 +595,11 @@ class LostItemResponse(BaseModel):
     direction: str
     description: Optional[str] = None
     location: Optional[str] = None
+    storage_location: Optional[str] = None
     lost_time: Optional[str] = None
     found_time: Optional[str] = None
     status: str
+    contact_visibility: str
     image_url: Optional[str] = None
     contact_person: str
     contact_phone: Optional[str] = None
@@ -555,6 +607,56 @@ class LostItemResponse(BaseModel):
     user_id: Optional[int] = None
     created_at: str
     updated_at: str
+
+class NotificationResponse(BaseModel):
+    id: int
+    title: str
+    message: Optional[str] = None
+    notification_type: Optional[str] = None
+    related_item_id: Optional[int] = None
+    link_url: Optional[str] = None
+    is_read: bool
+    created_at: str
+
+class ClaimRequestCreate(BaseModel):
+    requester_name: str
+    requester_contact: str
+    message: Optional[str] = None
+
+class ClaimRequestResponse(BaseModel):
+    id: int
+    item_id: int
+    requester_user_id: int
+    owner_user_id: Optional[int] = None
+    request_type: str
+    requester_name: str
+    requester_contact: str
+    message: Optional[str] = None
+    status: str
+    created_at: str
+    item_name: Optional[str] = None
+    item_direction: Optional[str] = None
+    requester_user_name: Optional[str] = None
+    owner_user_name: Optional[str] = None
+
+
+def _coerce_contact_visibility(value: Optional[str]) -> str:
+    if value is None or value == "":
+        return "private"
+    if value not in ("private", "logged_in", "claimed", "public"):
+        raise HTTPException(status_code=400, detail="无效联系方式可见性")
+    return value
+
+
+def _insert_notification(cur, user_id: Optional[int], title: str, message: str, notification_type: str, related_item_id: Optional[int] = None):
+    if not user_id:
+        return
+    cur.execute(
+        """INSERT INTO notifications
+           (user_id, title, message, notification_type, related_item_id, link_url)
+           VALUES (%s, %s, %s, %s, %s, %s)""",
+        (user_id, title, message, notification_type, related_item_id, f"/lost/{related_item_id}" if related_item_id else None),
+    )
 
 @app.get("/api/me", response_model=UserResponse)
 def get_me(request: Request):
@@ -600,6 +702,254 @@ def update_me(update: UserProfileUpdate, request: Request):
     finally:
         cur.close()
         release_db_connection(conn)
+
+
+@app.get("/api/notifications", response_model=List[NotificationResponse])
+def get_notifications(request: Request, unread_only: bool = False, limit: int = 20):
+    current_user = get_current_user(request)
+    limit = max(1, min(limit, 100))
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    try:
+        where_clause = "WHERE user_id = %s"
+        params = [current_user["id"]]
+        if unread_only:
+            where_clause += " AND is_read = FALSE"
+        params.append(limit)
+        cur.execute(
+            f"""SELECT id, title, message, notification_type, related_item_id, link_url, is_read, created_at
+                FROM notifications
+                {where_clause}
+                ORDER BY created_at DESC
+                LIMIT %s""",
+            params,
+        )
+        return [serialize_row(row) for row in cur.fetchall()]
+    except psycopg2.errors.UndefinedTable:
+        conn.rollback()
+        return []
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+
+@app.get("/api/notifications/unread-count")
+def get_unread_notification_count(request: Request):
+    current_user = get_current_user(request)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) FROM notifications WHERE user_id = %s AND is_read = FALSE", (current_user["id"],))
+        return {"unread_count": cur.fetchone()[0]}
+    except psycopg2.errors.UndefinedTable:
+        conn.rollback()
+        return {"unread_count": 0}
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+
+@app.put("/api/notifications/{notification_id}/read", response_model=NotificationResponse)
+def mark_notification_read(notification_id: int, request: Request):
+    current_user = get_current_user(request)
+    verify_csrf_origin(request)
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    try:
+        cur.execute(
+            """UPDATE notifications
+               SET is_read = TRUE
+               WHERE id = %s AND user_id = %s
+               RETURNING id, title, message, notification_type, related_item_id, link_url, is_read, created_at""",
+            (notification_id, current_user["id"]),
+        )
+        row = cur.fetchone()
+        conn.commit()
+        if not row:
+            raise HTTPException(status_code=404, detail="通知不存在")
+        return serialize_row(row)
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=f"更新通知失败: {e}")
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+
+@app.post("/api/lost-items/{item_id}/claim", response_model=ClaimRequestResponse)
+def create_claim_request(item_id: int, claim: ClaimRequestCreate, request: Request):
+    current_user = get_current_user(request)
+    verify_csrf_origin(request)
+    requester_name = claim.requester_name.strip()
+    requester_contact = claim.requester_contact.strip()
+    if not requester_name or not requester_contact:
+        raise HTTPException(status_code=400, detail="请填写称呼和联系方式")
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    try:
+        cur.execute(
+            """SELECT id, item_name, direction, status, user_id, contact_person
+               FROM lost_items
+               WHERE id = %s
+               FOR UPDATE""",
+            (item_id,),
+        )
+        item = cur.fetchone()
+        if not item:
+            raise HTTPException(status_code=404, detail="物品不存在")
+        if item["status"] != "active":
+            raise HTTPException(status_code=400, detail="该物品当前不可申请")
+        if item["user_id"] == current_user["id"]:
+            raise HTTPException(status_code=400, detail="不能申请自己发布的物品")
+        if current_user.get("role") != "admin":
+            cur.execute(
+                """SELECT COUNT(*)
+                   FROM claim_requests
+                   WHERE requester_user_id = %s
+                     AND created_at > CURRENT_TIMESTAMP - INTERVAL '10 minutes'""",
+                (current_user["id"],),
+            )
+            if cur.fetchone()[0] >= 5:
+                raise HTTPException(status_code=429, detail="申请过于频繁，请稍后再试")
+
+        request_type = "claim" if item["direction"] == "found" else "contact"
+        request_status = "completed" if request_type == "claim" else "submitted"
+        owner_user_id = item["user_id"]
+        cur.execute(
+            """INSERT INTO claim_requests
+               (item_id, requester_user_id, owner_user_id, request_type, requester_name, requester_contact, message, status)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING *""",
+            (
+                item_id,
+                current_user["id"],
+                owner_user_id,
+                request_type,
+                requester_name,
+                requester_contact,
+                none_if_empty(claim.message),
+                request_status,
+            ),
+        )
+        claim_row = cur.fetchone()
+
+        if request_type == "claim":
+            cur.execute(
+                "UPDATE lost_items SET status = 'recovered', updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (item_id,),
+            )
+            _insert_notification(
+                cur,
+                owner_user_id,
+                "有人认领了你发布的物品",
+                f"{requester_name} 认领了「{item['item_name']}」，联系方式：{requester_contact}",
+                "claim",
+                item_id,
+            )
+            _insert_notification(
+                cur,
+                current_user["id"],
+                "认领申请已提交",
+                f"你已认领「{item['item_name']}」，请按页面联系方式完成线下核验。",
+                "claim",
+                item_id,
+            )
+        else:
+            _insert_notification(
+                cur,
+                owner_user_id,
+                "有人可能捡到了你的物品",
+                f"{requester_name} 表示可能捡到了「{item['item_name']}」，联系方式：{requester_contact}",
+                "contact",
+                item_id,
+            )
+            _insert_notification(
+                cur,
+                current_user["id"],
+                "联系申请已提交",
+                f"你已向「{item['item_name']}」的发布者发送联系申请。",
+                "contact",
+                item_id,
+            )
+
+        conn.commit()
+        result = serialize_row(claim_row)
+        result["item_name"] = item["item_name"]
+        result["item_direction"] = item["direction"]
+        result["requester_user_name"] = current_user["name"]
+        return result
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail="你已经提交过申请")
+    except HTTPException:
+        conn.rollback()
+        raise
+    except psycopg2.errors.UndefinedTable:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail="认领申请表尚未初始化，请先执行数据库迁移")
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=f"提交申请失败: {e}")
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+
+@app.get("/api/me/claims", response_model=List[ClaimRequestResponse])
+def get_my_claim_requests(request: Request):
+    current_user = get_current_user(request)
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    try:
+        cur.execute(
+            """SELECT cr.*, li.item_name, li.direction AS item_direction,
+                      ru.name AS requester_user_name, ou.name AS owner_user_name
+               FROM claim_requests cr
+               JOIN lost_items li ON li.id = cr.item_id
+               JOIN users ru ON ru.id = cr.requester_user_id
+               LEFT JOIN users ou ON ou.id = cr.owner_user_id
+               WHERE cr.requester_user_id = %s OR cr.owner_user_id = %s
+               ORDER BY cr.created_at DESC""",
+            (current_user["id"], current_user["id"]),
+        )
+        return [serialize_row(row) for row in cur.fetchall()]
+    except psycopg2.errors.UndefinedTable:
+        conn.rollback()
+        return []
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+
+@app.get("/api/claim-requests", response_model=List[ClaimRequestResponse])
+def get_claim_requests(request: Request, limit: int = 100):
+    require_admin(request)
+    limit = max(1, min(limit, 500))
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    try:
+        cur.execute(
+            """SELECT cr.*, li.item_name, li.direction AS item_direction,
+                      ru.name AS requester_user_name, ou.name AS owner_user_name
+               FROM claim_requests cr
+               JOIN lost_items li ON li.id = cr.item_id
+               JOIN users ru ON ru.id = cr.requester_user_id
+               LEFT JOIN users ou ON ou.id = cr.owner_user_id
+               ORDER BY cr.created_at DESC
+               LIMIT %s""",
+            (limit,),
+        )
+        return [serialize_row(row) for row in cur.fetchall()]
+    except psycopg2.errors.UndefinedTable:
+        conn.rollback()
+        return []
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
 
 @app.get("/api/me/items")
 def get_my_lost_items(
@@ -733,6 +1083,7 @@ def update_user(user_id: int, update: UserUpdate, request: Request):
 
 @app.get("/api/lost-items")
 def get_lost_items(
+    request: Request,
     status: Optional[str] = None,
     direction: Optional[str] = None,
     post_type: Optional[str] = None,
@@ -767,11 +1118,13 @@ def get_lost_items(
     
     cur.execute(query, params)
     items = cur.fetchall()
+    current_user = get_optional_user(request)
+    claim_item_ids = _get_claim_item_ids_for_user(cur, current_user)
     cur.close()
     release_db_connection(conn)
     
     return {
-        "items": [serialize_row(item) for item in items],
+        "items": [serialize_item_for_user(item, current_user, claim_item_ids) for item in items],
         "total": total,
         "page": page,
         "page_size": page_size
@@ -781,7 +1134,7 @@ class MatchCheckRequest(LostItemCreate):
     pass
 
 @app.post("/api/match-check")
-def match_check(item: MatchCheckRequest, limit: int = 5):
+def match_check(item: MatchCheckRequest, request: Request, limit: int = 5):
     direction, _ = _resolve_create_state(item.direction, item.status, item.post_type)
     vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, item.image_url)
     if not vector:
@@ -802,8 +1155,10 @@ def match_check(item: MatchCheckRequest, limit: int = 5):
             (vector, target_direction, vector, limit)
         )
         items = cur.fetchall()
+        current_user = get_optional_user(request)
+        claim_item_ids = _get_claim_item_ids_for_user(cur, current_user)
         # Only return high similarity items? For now return top 5
-        return {"results": [serialize_row(row) for row in items]}
+        return {"results": [serialize_item_for_user(row, current_user, claim_item_ids) for row in items]}
     finally:
         cur.close()
         release_db_connection(conn)
@@ -813,6 +1168,7 @@ def create_lost_item(item: LostItemCreate, request: Request):
     current_user = get_current_user(request)
     verify_csrf_origin(request)
     direction, status = _resolve_create_state(item.direction, item.status, item.post_type)
+    contact_visibility = _coerce_contact_visibility(item.contact_visibility)
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, item.image_url)
@@ -823,12 +1179,12 @@ def create_lost_item(item: LostItemCreate, request: Request):
 
         cur.execute(
             """INSERT INTO lost_items
-               (id, item_name, item_type, description, location, lost_time, direction, status,
+               (id, item_name, item_type, description, location, storage_location, lost_time, direction, status, contact_visibility,
                 image_url, contact_person, contact_phone, contact_qq, user_id, vector)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
             (next_id, item.item_name, none_if_empty(item.item_type),
              none_if_empty(item.description), none_if_empty(item.location),
-             none_if_empty(item.lost_time), direction, status,
+             none_if_empty(item.storage_location), none_if_empty(item.lost_time), direction, status, contact_visibility,
              none_if_empty(item.image_url), item.contact_person,
              none_if_empty(item.contact_phone), none_if_empty(item.contact_qq),
              current_user["id"],
@@ -847,16 +1203,18 @@ def create_lost_item(item: LostItemCreate, request: Request):
         release_db_connection(conn)
 
 @app.get("/api/lost-items/{item_id}", response_model=LostItemResponse)
-def get_lost_item(item_id: int):
+def get_lost_item(item_id: int, request: Request):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute("SELECT * FROM lost_items WHERE id = %s", (item_id,))
     item = cur.fetchone()
+    current_user = get_optional_user(request)
+    claim_item_ids = _get_claim_item_ids_for_user(cur, current_user)
     cur.close()
     release_db_connection(conn)
     if not item:
         raise HTTPException(status_code=404, detail="物品不存在")
-    return serialize_row(item)
+    return serialize_item_for_user(item, current_user, claim_item_ids)
 
 @app.put("/api/lost-items/{item_id}", response_model=LostItemResponse)
 def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
@@ -869,25 +1227,31 @@ def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
         update_fields = []
         params = []
         
-        if item.item_name:
+        if item.item_name is not None:
             update_fields.append("item_name = %s")
-            params.append(item.item_name)
-        if item.item_type:
+            params.append(none_if_empty(item.item_name))
+        if item.item_type is not None:
             update_fields.append("item_type = %s")
-            params.append(item.item_type)
-        if item.description:
+            params.append(none_if_empty(item.item_type))
+        if item.description is not None:
             update_fields.append("description = %s")
-            params.append(item.description)
-        if item.location:
+            params.append(none_if_empty(item.description))
+        if item.location is not None:
             update_fields.append("location = %s")
-            params.append(item.location)
-        if item.found_time:
+            params.append(none_if_empty(item.location))
+        if item.storage_location is not None:
+            update_fields.append("storage_location = %s")
+            params.append(none_if_empty(item.storage_location))
+        if item.found_time is not None:
             update_fields.append("found_time = %s")
-            params.append(item.found_time)
+            params.append(none_if_empty(item.found_time))
         _append_state_update(update_fields, params, item.direction, item.status, item.post_type)
-        if item.image_url:
+        if item.contact_visibility is not None:
+            update_fields.append("contact_visibility = %s")
+            params.append(_coerce_contact_visibility(item.contact_visibility))
+        if item.image_url is not None:
             update_fields.append("image_url = %s")
-            params.append(item.image_url)
+            params.append(none_if_empty(item.image_url))
         
         if not update_fields:
             raise HTTPException(status_code=400, detail="没有要更新的字段")
@@ -953,6 +1317,7 @@ def delete_lost_item(item_id: int, request: Request):
 
 @app.get("/api/search")
 def search_lost_items(
+    request: Request,
     query: str = Query(..., min_length=1),
     item_type: Optional[str] = None,
     status: Optional[str] = None,
@@ -983,14 +1348,17 @@ def search_lost_items(
     
     cur.execute(search_query, params)
     items = cur.fetchall()
+    current_user = get_optional_user(request)
+    claim_item_ids = _get_claim_item_ids_for_user(cur, current_user)
     cur.close()
     release_db_connection(conn)
     
-    return {"results": [serialize_row(item) for item in items]}
+    return {"results": [serialize_item_for_user(item, current_user, claim_item_ids) for item in items]}
 
 
 @app.get("/api/semantic-search")
 def semantic_search(
+    request: Request,
     query: str = Query(..., min_length=1),
     item_type: Optional[str] = None,
     status: Optional[str] = None,
@@ -1027,7 +1395,9 @@ def semantic_search(
             params
         )
         items = cur.fetchall()
-        return {"results": [serialize_row(item) for item in items]}
+        current_user = get_optional_user(request)
+        claim_item_ids = _get_claim_item_ids_for_user(cur, current_user)
+        return {"results": [serialize_item_for_user(item, current_user, claim_item_ids) for item in items]}
     finally:
         cur.close()
         release_db_connection(conn)

@@ -19,10 +19,12 @@ CREATE TABLE IF NOT EXISTS lost_items (
     item_type VARCHAR(50),
     description TEXT,
     location VARCHAR(200),
+    storage_location VARCHAR(200),
     lost_time TIMESTAMP,
     found_time TIMESTAMP,
     direction VARCHAR(20) NOT NULL DEFAULT 'lost',
     status VARCHAR(20) NOT NULL DEFAULT 'active',
+    contact_visibility VARCHAR(20) NOT NULL DEFAULT 'private',
     image_url VARCHAR(500),
     contact_person VARCHAR(100),
     contact_phone VARCHAR(20),
@@ -32,7 +34,36 @@ CREATE TABLE IF NOT EXISTS lost_items (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT lost_items_direction_check CHECK (direction IN ('lost', 'found')),
-    CONSTRAINT lost_items_status_check CHECK (status IN ('active', 'recovered', 'expired'))
+    CONSTRAINT lost_items_status_check CHECK (status IN ('active', 'recovered', 'expired')),
+    CONSTRAINT lost_items_contact_visibility_check CHECK (contact_visibility IN ('private', 'logged_in', 'claimed', 'public'))
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(200) NOT NULL,
+    message TEXT,
+    notification_type VARCHAR(50) DEFAULT 'system',
+    related_item_id INTEGER REFERENCES lost_items(id) ON DELETE SET NULL,
+    link_url VARCHAR(500),
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS claim_requests (
+    id SERIAL PRIMARY KEY,
+    item_id INTEGER NOT NULL REFERENCES lost_items(id) ON DELETE CASCADE,
+    requester_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    request_type VARCHAR(20) NOT NULL DEFAULT 'claim',
+    requester_name VARCHAR(100) NOT NULL,
+    requester_contact VARCHAR(200) NOT NULL,
+    message TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'submitted',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT claim_requests_type_check CHECK (request_type IN ('claim', 'contact')),
+    CONSTRAINT claim_requests_status_check CHECK (status IN ('submitted', 'completed', 'rejected')),
+    CONSTRAINT claim_requests_unique_user_item_type UNIQUE (item_id, requester_user_id, request_type)
 );
 
 CREATE TABLE IF NOT EXISTS match_records (
@@ -50,3 +81,10 @@ CREATE INDEX IF NOT EXISTS idx_lost_items_status ON lost_items(status);
 CREATE INDEX IF NOT EXISTS idx_lost_items_direction ON lost_items(direction);
 CREATE INDEX IF NOT EXISTS idx_lost_items_type ON lost_items(item_type);
 CREATE INDEX IF NOT EXISTS idx_lost_items_user_id ON lost_items(user_id);
+CREATE INDEX IF NOT EXISTS idx_lost_items_contact_visibility ON lost_items(contact_visibility);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
+CREATE INDEX IF NOT EXISTS idx_claim_requests_item_id ON claim_requests(item_id);
+CREATE INDEX IF NOT EXISTS idx_claim_requests_requester ON claim_requests(requester_user_id);
+CREATE INDEX IF NOT EXISTS idx_claim_requests_owner ON claim_requests(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_claim_requests_created_at ON claim_requests(created_at);

@@ -74,6 +74,18 @@ export const statsApi = {
   get: () => api.get('/stats'),
 }
 
+export const notificationsApi = {
+  list: (params) => api.get('/notifications', { params, silent: true }),
+  unreadCount: () => api.get('/notifications/unread-count', { silent: true }),
+  markRead: (id) => api.put(`/notifications/${id}/read`, null, { silent: true }),
+}
+
+export const claimsApi = {
+  create: (itemId, data) => api.post(`/lost-items/${itemId}/claim`, data),
+  mine: () => api.get('/me/claims'),
+  adminList: (params) => api.get('/claim-requests', { params }),
+}
+
 export const authApi = {
   loginUrl: (next = '/') => `${apiBase}/api/auth/login?next=${encodeURIComponent(next)}`,
   me: (config = {}) => api.get('/auth/me', config),

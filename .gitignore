@@ -1,5 +1,6 @@
 # 用户上传文件
 backend/uploads/
+./start.sh
 
 # Python
 __pycache__/

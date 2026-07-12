@@ -39,6 +39,12 @@
                 </template>
               </el-table-column>
               <el-table-column prop="item_type" label="分类" width="110" />
+              <el-table-column label="存放处" min-width="140">
+                <template #default="scope">{{ scope.row.storage_location || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="联系方式" width="110">
+                <template #default="scope">{{ visibilityText(scope.row.contact_visibility) }}</template>
+              </el-table-column>
               <el-table-column label="状态" width="110">
                 <template #default="scope">
                   <span :class="['status-chip', getStatusClass(scope.row)]">
@@ -74,6 +80,39 @@
                     标记解决
                   </el-button>
                   <el-button type="danger" link @click="deleteItem(scope.row.id)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+
+          <el-tab-pane label="申请" name="claims">
+            <el-table :data="claims" v-loading="loadingClaims">
+              <el-table-column prop="id" label="ID" width="70" />
+              <el-table-column prop="item_name" label="物品" min-width="160" />
+              <el-table-column label="类型" width="100">
+                <template #default="scope">
+                  <el-tag :type="scope.row.request_type === 'claim' ? 'success' : 'primary'" size="small">
+                    {{ scope.row.request_type === 'claim' ? '认领' : '联系' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="requester_name" label="申请人" width="120" />
+              <el-table-column prop="requester_contact" label="联系方式" min-width="180" />
+              <el-table-column prop="message" label="补充说明" min-width="220">
+                <template #default="scope">{{ scope.row.message || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="发布者" width="130">
+                <template #default="scope">{{ scope.row.owner_user_name || '匿名/未绑定' }}</template>
+              </el-table-column>
+              <el-table-column label="状态" width="100">
+                <template #default="scope">{{ claimStatusText(scope.row.status) }}</template>
+              </el-table-column>
+              <el-table-column label="申请时间" width="180">
+                <template #default="scope">{{ formatTime(scope.row.created_at) }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="90" fixed="right">
+                <template #default="scope">
+                  <el-button type="primary" link @click="goDetail(scope.row.item_id)">查看</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -150,6 +189,14 @@
           <el-input type="textarea" v-model="editForm.description" :rows="4" />
         </el-form-item>
         <div class="form-grid">
+          <el-form-item label="地点">
+            <el-input v-model="editForm.location" />
+          </el-form-item>
+          <el-form-item label="当前存放处">
+            <el-input v-model="editForm.storage_location" />
+          </el-form-item>
+        </div>
+        <div class="form-grid">
           <el-form-item label="信息类型">
             <el-radio-group v-model="editForm.direction">
               <el-radio-button value="lost">寻物</el-radio-button>
@@ -162,6 +209,14 @@
               <el-radio-button value="recovered">已找回</el-radio-button>
               <el-radio-button value="expired">已过期</el-radio-button>
             </el-radio-group>
+          </el-form-item>
+          <el-form-item label="联系方式可见性">
+            <el-select v-model="editForm.contact_visibility">
+              <el-option label="隐藏" value="private" />
+              <el-option label="登录可见" value="logged_in" />
+              <el-option label="认领后可见" value="claimed" />
+              <el-option label="公开" value="public" />
+            </el-select>
           </el-form-item>
         </div>
       </el-form>
@@ -178,7 +233,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Box, CircleCheck, HelpFilled, Refresh, User } from '@element-plus/icons-vue'
-import { lostItemsApi, statsApi, usersApi } from '../api'
+import { lostItemsApi, statsApi, usersApi, claimsApi } from '../api'
 import { useUserStore } from '../stores/user'
 
 const userStore = useUserStore()
@@ -187,8 +242,10 @@ const activeTab = ref('items')
 const stats = ref({})
 const items = ref([])
 const users = ref([])
+const claims = ref([])
 const loading = ref(true)
 const loadingUsers = ref(true)
+const loadingClaims = ref(true)
 const dialogVisible = ref(false)
 const vectorDialogVisible = ref(false)
 const selectedItem = ref(null)
@@ -200,7 +257,10 @@ const editForm = reactive({
   item_type: '',
   direction: 'lost',
   description: '',
+  location: '',
+  storage_location: '',
   status: 'active',
+  contact_visibility: 'private',
 })
 
 const statCards = computed(() => [
@@ -209,6 +269,19 @@ const statCards = computed(() => [
   { label: '总记录', value: stats.value.total_items || 0, icon: Box, cls: '' },
   { label: '用户', value: stats.value.user_count || 0, icon: User, cls: '' },
 ])
+
+const visibilityText = (visibility) => {
+  if (visibility === 'public') return '公开'
+  if (visibility === 'logged_in') return '登录可见'
+  if (visibility === 'claimed') return '认领后'
+  return '隐藏'
+}
+
+const claimStatusText = (status) => {
+  if (status === 'completed') return '已完成'
+  if (status === 'rejected') return '已拒绝'
+  return '已提交'
+}
 
 onMounted(() => {
   if (!userStore.isAdminView) {
@@ -227,20 +300,24 @@ watch(() => userStore.isAdminView, (isAdminView) => {
 const loadAll = async () => {
   loading.value = true
   loadingUsers.value = true
+  loadingClaims.value = true
   try {
-    const [statsRes, itemsRes, usersRes] = await Promise.all([
+    const [statsRes, itemsRes, usersRes, claimsRes] = await Promise.all([
       statsApi.get(),
       lostItemsApi.getAll({ page: 1, page_size: 100 }),
       usersApi.getAll(),
+      claimsApi.adminList({ limit: 100 }),
     ])
     stats.value = statsRes.data
     items.value = itemsRes.data.items || []
     users.value = usersRes.data || []
+    claims.value = claimsRes.data || []
   } catch (e) {
     console.error('加载失败', e)
   } finally {
     loading.value = false
     loadingUsers.value = false
+    loadingClaims.value = false
   }
 }
 
@@ -281,7 +358,10 @@ const editItem = (row) => {
   editForm.item_type = row.item_type
   editForm.direction = row.direction || row.post_type || 'lost'
   editForm.description = row.description
+  editForm.location = row.location || ''
+  editForm.storage_location = row.storage_location || ''
   editForm.status = row.status
+  editForm.contact_visibility = row.contact_visibility || 'private'
   dialogVisible.value = true
 }
 
@@ -292,7 +372,10 @@ const saveEdit = async () => {
       item_type: editForm.item_type,
       direction: editForm.direction,
       description: editForm.description,
+      location: editForm.location,
+      storage_location: editForm.storage_location,
       status: editForm.status,
+      contact_visibility: editForm.contact_visibility,
     })
     dialogVisible.value = false
     ElMessage.success('保存成功')

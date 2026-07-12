@@ -73,15 +73,15 @@
               <p>发布于 {{ formatDate(item.created_at) }}</p>
             </header>
 
-            <div v-if="userStore.isAuthenticated" class="action-panel surface-section">
+            <div class="action-panel surface-section">
               <template v-if="item.status === 'active'">
                 <el-button v-if="canManageItem" type="success" round @click="handleMarkResolved" :loading="actionLoading">
                   <el-icon><CircleCheck /></el-icon>
                   标记为已找回
                 </el-button>
-                <el-button type="primary" plain round @click="handleClaim" :loading="actionLoading">
+                <el-button v-if="!canManageItem" type="primary" plain round @click="handleClaim" :loading="actionLoading">
                   <el-icon><ChatLineRound /></el-icon>
-                  联系发布者
+                  {{ claimActionText }}
                 </el-button>
               </template>
               <template v-else>
@@ -117,12 +117,19 @@
                     <strong>{{ item.item_type || '未分类' }}</strong>
                   </span>
                 </div>
+                <div v-if="canViewContact && item.storage_location" class="info-row">
+                  <el-icon><MapLocation /></el-icon>
+                  <span>
+                    <small>当前存放处</small>
+                    <strong>{{ item.storage_location }}</strong>
+                  </span>
+                </div>
               </div>
             </section>
 
             <section class="surface-section info-card">
               <h2><el-icon><User /></el-icon> 联系方式</h2>
-              <div class="contact-grid">
+              <div v-if="canViewContact" class="contact-grid">
                 <div class="contact-row">
                   <span>联系人</span>
                   <strong>{{ item.contact_person || '未填写' }}</strong>
@@ -135,6 +142,9 @@
                   <span>QQ</span>
                   <strong>{{ item.contact_qq }}</strong>
                 </div>
+              </div>
+              <div v-else class="contact-locked">
+                {{ contactLockedText }}
               </div>
             </section>
           </div>
@@ -177,9 +187,9 @@
       </template>
     </div>
 
-    <el-dialog v-model="claimDialogVisible" title="联系发布者" width="520px">
+    <el-dialog v-model="claimDialogVisible" :title="claimDialogTitle" width="520px">
       <div class="claim-content">
-        <p>请留下您的称呼和联系方式，方便后续核对。</p>
+        <p>{{ claimDialogNote }}</p>
         <el-form class="claim-form">
           <el-form-item>
             <el-input v-model="claimForm.name" placeholder="您的称呼" size="large">
@@ -190,6 +200,9 @@
             <el-input v-model="claimForm.contact" placeholder="手机号或微信号" size="large">
               <template #prefix><el-icon><Phone /></el-icon></template>
             </el-input>
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="claimForm.message" type="textarea" :rows="3" placeholder="补充说明，例如物品特征、拾获时间地点或核验信息" />
           </el-form-item>
         </el-form>
       </div>
@@ -221,7 +234,7 @@ import {
   User,
   WarningFilled,
 } from '@element-plus/icons-vue'
-import { lostItemsApi, resolveImageUrl } from '../api'
+import { lostItemsApi, claimsApi, resolveImageUrl } from '../api'
 import { useUserStore } from '../stores/user'
 
 const userStore = useUserStore()
@@ -233,7 +246,8 @@ const actionLoading = ref(false)
 const similarItems = ref([])
 const currentImageIndex = ref(0)
 const claimDialogVisible = ref(false)
-const claimForm = ref({ name: '', contact: '' })
+const claimForm = ref({ name: '', contact: '', message: '' })
+const myClaims = ref([])
 
 const imageList = computed(() => {
   if (!item.value?.image_url) return []
@@ -250,6 +264,31 @@ const canManageItem = computed(() => {
   return userStore.isAdmin || item.value.user_id === userStore.user?.id
 })
 
+const hasClaimAccess = computed(() => {
+  if (!item.value || !userStore.isAuthenticated) return false
+  return myClaims.value.some(claim => claim.item_id === item.value.id)
+})
+
+const canViewContact = computed(() => {
+  if (!item.value) return false
+  if (canManageItem.value || hasClaimAccess.value) return true
+  if (item.value.contact_visibility === 'public') return true
+  if (item.value.contact_visibility === 'logged_in' && userStore.isAuthenticated) return true
+  return false
+})
+
+const claimActionText = computed(() => item.value?.direction === 'found' ? '这是我的物品' : '我捡到了，联系失主')
+const claimDialogTitle = computed(() => item.value?.direction === 'found' ? '认领确认' : '联系失主')
+const claimDialogNote = computed(() => (
+  item.value?.direction === 'found'
+    ? '请如实填写您的联系方式和核验信息。提交后系统会记录认领并通知发布者。'
+    : '请填写您的联系方式和拾获信息。提交后系统会通知失主，由失主与您线下核验。'
+))
+const contactLockedText = computed(() => {
+  if (!userStore.isAuthenticated) return '登录后可申请查看联系方式'
+  return item.value?.direction === 'found' ? '请先认领后获取联系方式' : '请先提交联系申请'
+})
+
 onMounted(() => {
   loadItem()
 })
@@ -264,12 +303,26 @@ const loadItem = async () => {
   try {
     const res = await lostItemsApi.getById(route.params.id)
     item.value = res.data
+    await loadMyClaims()
     await loadSimilar()
   } catch (e) {
     item.value = null
     console.error('加载详情失败', e)
   } finally {
     loading.value = false
+  }
+}
+
+const loadMyClaims = async () => {
+  if (!userStore.isAuthenticated) {
+    myClaims.value = []
+    return
+  }
+  try {
+    const res = await claimsApi.mine()
+    myClaims.value = res.data || []
+  } catch {
+    myClaims.value = []
   }
 }
 
@@ -344,7 +397,11 @@ const handleClaim = () => {
     userStore.loginWithCasdoor(`/#${route.fullPath}`)
     return
   }
-  claimForm.value = { name: '', contact: '' }
+  claimForm.value = {
+    name: userStore.user?.name || '',
+    contact: userStore.user?.phone || userStore.user?.qq || userStore.user?.email || '',
+    message: '',
+  }
   claimDialogVisible.value = true
 }
 
@@ -355,8 +412,16 @@ const confirmClaim = async () => {
   }
   actionLoading.value = true
   try {
+    await claimsApi.create(item.value.id, {
+      requester_name: claimForm.value.name,
+      requester_contact: claimForm.value.contact,
+      message: claimForm.value.message,
+    })
     claimDialogVisible.value = false
-    ElMessage.success('已记录，请按页面联系方式联系发布者核对')
+    ElMessage.success(item.value.direction === 'found' ? '认领已提交，物品已标记为已找回' : '联系申请已提交')
+    await loadItem()
+  } catch (e) {
+    ElMessage.error('操作失败')
   } finally {
     actionLoading.value = false
   }
@@ -554,6 +619,17 @@ const getStatusText = (row) => {
 
 .contact-row {
   justify-content: space-between;
+}
+
+.contact-locked {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius-md);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  text-align: center;
+  font-weight: 700;
 }
 
 .similar-section {

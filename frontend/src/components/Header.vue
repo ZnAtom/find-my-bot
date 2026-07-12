@@ -38,6 +38,39 @@
           登录
         </el-button>
 
+        <el-popover
+          v-if="userStore.isAuthenticated"
+          placement="bottom-end"
+          width="340"
+          trigger="click"
+          @show="loadNotifications"
+        >
+          <template #reference>
+            <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99">
+              <button class="notification-button" type="button" aria-label="系统通知">
+                <el-icon><Bell /></el-icon>
+              </button>
+            </el-badge>
+          </template>
+          <div class="notification-panel">
+            <div class="notification-title">系统通知</div>
+            <div v-if="notificationsLoading" class="notification-empty">加载中...</div>
+            <div v-else-if="notifications.length === 0" class="notification-empty">暂无通知</div>
+            <button
+              v-for="notice in notifications"
+              v-else
+              :key="notice.id"
+              :class="['notification-item', { unread: !notice.is_read }]"
+              type="button"
+              @click="openNotification(notice)"
+            >
+              <strong>{{ notice.title }}</strong>
+              <span>{{ notice.message || '无详细内容' }}</span>
+              <small>{{ formatNoticeTime(notice.created_at) }}</small>
+            </button>
+          </div>
+        </el-popover>
+
         <el-dropdown v-if="userStore.isAuthenticated" trigger="click">
           <button class="account-button" type="button">
             <span class="avatar-dot">{{ userInitial }}</span>
@@ -131,10 +164,11 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Collection,
+  Bell,
   HomeFilled,
   Menu,
   Plus,
@@ -144,6 +178,7 @@ import {
   User,
 } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user'
+import { notificationsApi } from '../api'
 import logoUrl from '../assets/foundit-logo.svg'
 import symbolUrl from '../assets/foundit-symbol.svg'
 
@@ -151,6 +186,9 @@ const userStore = useUserStore()
 const router = useRouter()
 const route = useRoute()
 const drawerVisible = ref(false)
+const notifications = ref([])
+const unreadCount = ref(0)
+const notificationsLoading = ref(false)
 
 const activeKey = computed(() => {
   if (route.name === 'detail') return 'lost'
@@ -181,12 +219,75 @@ const navigateFromDrawer = (name) => {
   navigate(name)
 }
 
+const loadUnreadCount = async () => {
+  if (!userStore.isAuthenticated) {
+    unreadCount.value = 0
+    return
+  }
+  try {
+    const res = await notificationsApi.unreadCount()
+    unreadCount.value = res.data.unread_count || 0
+  } catch {
+    unreadCount.value = 0
+  }
+}
+
+const loadNotifications = async () => {
+  if (!userStore.isAuthenticated) return
+  notificationsLoading.value = true
+  try {
+    const res = await notificationsApi.list({ limit: 20 })
+    notifications.value = res.data || []
+    await loadUnreadCount()
+  } catch {
+    notifications.value = []
+    unreadCount.value = 0
+  } finally {
+    notificationsLoading.value = false
+  }
+}
+
+const openNotification = async (notice) => {
+  if (!notice.is_read) {
+    try {
+      await notificationsApi.markRead(notice.id)
+      notice.is_read = true
+      await loadUnreadCount()
+    } catch {
+      // Do not block navigation when marking read fails.
+    }
+  }
+  if (notice.link_url) {
+    router.push(notice.link_url)
+  } else if (notice.related_item_id) {
+    router.push({ name: 'detail', params: { id: notice.related_item_id } })
+  }
+}
+
+const formatNoticeTime = (value) => {
+  if (!value) return ''
+  return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
 const logout = async () => {
   await userStore.logout()
+  notifications.value = []
+  unreadCount.value = 0
   if (route.meta.requiresAuth) {
     router.push({ name: 'home' })
   }
 }
+
+watch(() => userStore.isAuthenticated, (isAuthed) => {
+  if (isAuthed) {
+    loadUnreadCount()
+  } else {
+    notifications.value = []
+    unreadCount.value = 0
+  }
+})
+
+onMounted(loadUnreadCount)
 </script>
 
 <style scoped>
@@ -297,6 +398,86 @@ const logout = async () => {
   white-space: nowrap;
   font-size: 13px;
   font-weight: 700;
+}
+
+.notification-button {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--surface-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.notification-button:hover {
+  color: var(--foundit-blue);
+  border-color: rgba(37, 99, 235, 0.22);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.notification-panel {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.notification-title {
+  padding: 4px 2px 10px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.notification-empty {
+  padding: 28px 0;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.notification-item {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  padding: 12px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.notification-item:hover {
+  background: var(--surface-color);
+}
+
+.notification-item strong {
+  font-size: 14px;
+}
+
+.notification-item span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.notification-item small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.notification-item.unread strong::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  display: inline-block;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--foundit-blue);
+  vertical-align: middle;
 }
 
 .mobile-menu-button {
