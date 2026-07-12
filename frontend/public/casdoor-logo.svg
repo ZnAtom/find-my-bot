@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="-6 -6 202 204" role="img" aria-labelledby="title desc">
+  <title id="title">FoundIt Casdoor application logo</title>
+  <desc id="desc">FoundIt square symbol for Casdoor application display.</desc>
+  <defs>
+    <linearGradient id="casdoor-logo-blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2A68F3"/>
+      <stop offset="1" stop-color="#1F5FEA"/>
+    </linearGradient>
+    <linearGradient id="casdoor-logo-teal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#25C7B7"/>
+      <stop offset="1" stop-color="#14B8A6"/>
+    </linearGradient>
+  </defs>
+  <path d="M 19.668 184.946 C 9.095 184.946 0.625 176.382 0.625 165.808 L 0.625 77.5 C 0.625 35.293 34.843 1.054 77.05 1.054 L 177.45 1.054 C 179.362 1.054 180.911 2.604 180.911 4.516 L 180.911 111.752 C 169.127 107.935 156.415 108.099 144.732 112.214 L 144.732 43.5 C 144.732 41.624 143.212 40.104 141.336 40.104 L 77.35 40.104 C 56.166 40.104 38.982 57.288 38.982 78.472 L 38.982 142.336 C 38.982 144.258 40.54 145.816 42.462 145.816 L 110.036 145.816 C 113.8 158.8 106 184.62 87.424 184.62 Z" fill="url(#casdoor-logo-blue)"/>
+  <circle cx="163.5" cy="165.5" r="25.5" fill="url(#casdoor-logo-teal)"/>
+</svg>
