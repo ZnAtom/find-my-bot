@@ -1178,8 +1178,6 @@ def create_lost_item(item: LostItemCreate, request: Request):
         raise HTTPException(status_code=400, detail="发布寻物信息至少需要填写一种联系方式")
     if direction == "found" and not current_user and has_contact:
         raise HTTPException(status_code=401, detail="匿名招领不能填写联系方式，请登录后实名发布")
-    if direction == "found" and not none_if_empty(item.storage_location):
-        raise HTTPException(status_code=400, detail="发布招领信息需要填写当前存放处")
 
     if direction == "found" and not current_user:
         contact_visibility = "private"

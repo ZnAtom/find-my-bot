@@ -98,7 +98,7 @@
                 </el-form-item>
               </div>
 
-              <el-form-item v-if="isFound" label="现在存放处" prop="storage_location">
+              <el-form-item v-if="isFound" label="现在存放处（选填）" prop="storage_location">
                 <el-input v-model="formData.storage_location" placeholder="例如：已交到图书馆前台、暂存在二教门卫处" size="large" />
               </el-form-item>
 
@@ -308,7 +308,7 @@ const pageSubtitle = computed(() => (
 ))
 const detailStepDescription = computed(() => (
   isFound.value
-    ? '填写捡到地点、当前存放处和可核对的特征。'
+    ? '填写捡到地点、当前存放处和可核对的特征。当前存放处可以稍后补充。'
     : '填写丢失地点、时间和详细特征，匹配结果会更准确。'
 ))
 const contactStepDescription = computed(() => (
@@ -327,14 +327,6 @@ function isContactRequired() {
 function validateLocation(rule, value, callback) {
   if (formData.direction === 'lost' && !value) {
     callback(new Error('请输入丢失地点'))
-    return
-  }
-  callback()
-}
-
-function validateStorageLocation(rule, value, callback) {
-  if (formData.direction === 'found' && !value) {
-    callback(new Error('请输入当前存放处'))
     return
   }
   callback()
@@ -377,7 +369,6 @@ const rules = {
   item_name: [{ required: true, message: '请输入物品名称', trigger: 'blur' }],
   item_type: [{ required: true, message: '请选择物品分类', trigger: 'change' }],
   location: [{ validator: validateLocation, trigger: 'change' }],
-  storage_location: [{ validator: validateStorageLocation, trigger: 'blur' }],
   description: [{ validator: validateDescription, trigger: 'blur' }],
   contact_person: [{ validator: validateContactPerson, trigger: 'blur' }],
   contact_phone: [{ validator: validatePhone, trigger: 'blur' }],
@@ -386,7 +377,7 @@ const rules = {
 
 const stepFields = [
   ['direction', 'item_name', 'item_type'],
-  ['location', 'storage_location', 'description'],
+  ['location', 'description'],
   ['contact_person', 'contact_phone', 'contact_email'],
 ]
 
