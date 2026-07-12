@@ -11,10 +11,10 @@ resources:
 images:
 - name: ghcr.io/znatom/find-my-bot-backend
   newName: ghcr.nju.edu.cn/znatom/find-my-bot-backend
-  newTag: sha-20847b3c6efff238f45f72a3ea1b4d77fcdd2f4c
+  newTag: sha-a908670549ad39ed85af1e5e4578f90239e41887
 - name: ghcr.io/znatom/find-my-bot-db
   newName: ghcr.nju.edu.cn/znatom/find-my-bot-db
   newTag: sha-c17bb7ad32a832893db723b8e14a53e5796fb1f5
 - name: ghcr.io/znatom/find-my-bot-frontend
   newName: ghcr.nju.edu.cn/znatom/find-my-bot-frontend
-  newTag: sha-9557a4e1d65cfbc050d8099a6916af21bb59bc76
+  newTag: sha-a908670549ad39ed85af1e5e4578f90239e41887
