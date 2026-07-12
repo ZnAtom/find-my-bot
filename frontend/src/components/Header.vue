@@ -105,6 +105,8 @@
       direction="rtl"
       size="82%"
       :with-header="false"
+      append-to-body
+      :z-index="3000"
       class="mobile-drawer"
     >
       <div class="drawer-shell">
@@ -551,6 +553,14 @@ onMounted(loadUnreadCount)
 
 .full-width {
   width: 100%;
+}
+
+:deep(.mobile-drawer) {
+  z-index: 3001;
+}
+
+:deep(.mobile-drawer.el-drawer) {
+  position: fixed;
 }
 
 @media (max-width: 860px) {
