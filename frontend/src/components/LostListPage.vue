@@ -7,10 +7,6 @@
           <h1 class="page-title">物品库</h1>
           <p class="page-subtitle">按状态、分类和描述检索校园里的寻物与招领记录。</p>
         </div>
-        <el-button type="primary" round @click="router.push({ name: 'create' })">
-          <el-icon><Plus /></el-icon>
-          发布记录
-        </el-button>
       </header>
 
       <section class="search-console surface-section">
@@ -131,7 +127,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Search, MagicStick, Picture, MapLocation, Plus } from '@element-plus/icons-vue'
+import { Search, MagicStick, Picture, MapLocation } from '@element-plus/icons-vue'
 import { lostItemsApi, resolveImageUrl } from '../api'
 
 const searchQuery = ref('')

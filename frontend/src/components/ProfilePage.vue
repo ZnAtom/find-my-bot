@@ -7,10 +7,6 @@
           <h1 class="page-title">个人中心</h1>
           <p class="page-subtitle">管理自己的发布记录和默认联系方式。</p>
         </div>
-        <el-button type="primary" round @click="goCreate">
-          <el-icon><Plus /></el-icon>
-          发布记录
-        </el-button>
       </header>
 
       <div class="profile-layout">
@@ -240,7 +236,6 @@ import {
   Message,
   Phone,
   Picture,
-  Plus,
   Refresh,
   Switch,
   SwitchButton,
