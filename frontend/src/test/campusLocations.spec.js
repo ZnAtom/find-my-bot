@@ -6,6 +6,7 @@ import {
   findNearestCampusLocation,
   getCampusBounds,
   projectCampusBoundary,
+  projectCampusPolygon,
   projectCampusPoint,
   searchCampusLocations,
 } from '../data/campusLocations'
@@ -13,8 +14,12 @@ import {
 describe('campus location data', () => {
   it('provides a hierarchical campus tree', () => {
     expect(campusLocationTree[0].label).toContain('浦东校区')
-    expect(campusLocationTree[0].children.length).toBeGreaterThan(2)
-    expect(campusLocationTree[0].children.some(group => group.label === '生活服务区')).toBe(true)
+    expect(campusLocationTree[0].children.length).toBe(5)
+    const academic = campusLocationTree[0].children.find(group => group.label === '教学科研区')
+    expect(academic).toBeTruthy()
+    expect(academic.children.some(section => section.label === '信息科学与技术学院')).toBe(true)
+    const infoSection = academic.children.find(section => section.label === '信息科学与技术学院')
+    expect(infoSection.children.some(item => item.label === '信息学院1号楼')).toBe(true)
   })
 
   it('searches by building and alias', () => {
@@ -30,7 +35,16 @@ describe('campus location data', () => {
   it('searches residential and dining locations from the campus map', () => {
     expect(searchCampusLocations('宿舍')[0].label).toBe('学生公寓8号楼')
     expect(searchCampusLocations('白玉兰')[0].label).toBe('白玉兰一楼学生食堂')
-    expect(campusLocationEntries.some(entry => entry.groupLabel === '住宿公共区')).toBe(true)
+    expect(campusLocationEntries.some(entry => entry.sectionLabel === '住宿')).toBe(true)
+    expect(campusLocationEntries.some(entry => entry.sectionLabel === '餐饮')).toBe(true)
+  })
+
+  it('contains real building polygons for the map view', () => {
+    const library = campusLocationEntries.find((entry) => entry.id === 'library')
+    expect(library.sectionLabel).toBe('图书与学术服务')
+    expect(Array.isArray(library.polygon)).toBe(true)
+    const polygonPoints = projectCampusPolygon(library.polygon, getCampusBounds())
+    expect(polygonPoints.split(' ').length).toBeGreaterThan(6)
   })
 
   it('finds the nearest known campus place', () => {

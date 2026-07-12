@@ -42,6 +42,25 @@ describe('CampusMapSketch', () => {
     expect(wrapper.emitted('select')?.[0]?.[0].id).toBe('library')
   })
 
+  it('selects a building directly when the polygon is clicked', async () => {
+    const wrapper = mount(CampusMapSketch, {
+      props: {
+        entries: campusLocationEntries,
+        activeGroupId: 'all',
+      },
+    })
+
+    const libraryPolygon = wrapper.findAll('polygon.campus-building').find((node) =>
+      node.element.textContent?.includes('图书馆'),
+    )
+
+    expect(libraryPolygon).toBeTruthy()
+
+    await libraryPolygon.trigger('click')
+
+    expect(wrapper.emitted('select')?.at(-1)?.[0].id).toBe('library')
+  })
+
   it('dims places outside the active group', () => {
     const wrapper = mount(CampusMapSketch, {
       props: {
@@ -50,7 +69,7 @@ describe('CampusMapSketch', () => {
       },
     })
 
-    expect(wrapper.find('[title*="图书馆"]').classes()).toContain('filtered')
+    expect(wrapper.find('polygon.campus-building').classes()).toContain('filtered')
     expect(wrapper.find('[title*="尚科餐厅"]').classes()).not.toContain('filtered')
   })
 })

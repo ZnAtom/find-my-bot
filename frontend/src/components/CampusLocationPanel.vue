@@ -76,7 +76,7 @@
         @click="selectEntry(entry, 'chip')"
       >
         <strong>{{ entry.label }}</strong>
-        <span>{{ entry.groupLabel }}</span>
+        <span>{{ entry.sectionLabel }}</span>
       </button>
     </div>
 
@@ -118,11 +118,11 @@ const props = defineProps({
   },
   subtitle: {
     type: String,
-    default: '按校区、区域和具体地点选择，或直接搜索地点名。',
+    default: '按校区、区域、院系和具体地点选择，或直接搜索地点名。',
   },
   searchPlaceholder: {
     type: String,
-    default: '搜索建筑、餐厅、出入口',
+    default: '搜索建筑、院系、餐厅、出入口',
   },
 })
 
@@ -187,8 +187,8 @@ const geoHintText = computed(() => {
 const geoHintWarning = computed(() => ['unsupported', 'insecure', 'denied'].includes(geoPermissionState.value) || Boolean(geoErrorMessage.value))
 
 const mapSubtitle = computed(() => {
-  if (activeGroup.value === 'all') return '点击彩色区域、标记或地图空白位置，即可选择附近校园地点。'
-  return `正在查看${activeGroupLabel.value}，点击标记或地图位置即可选择附近地点。`
+  if (activeGroup.value === 'all') return '点击建筑轮廓、区域文字或地图空白位置，即可选择附近校园地点。'
+  return `正在查看${activeGroupLabel.value}，点击建筑轮廓、标记或地图位置即可选择附近地点。`
 })
 
 const cascaderProps = {
@@ -250,7 +250,7 @@ function selectEntry(entry, source, extra = {}) {
     pathCodes: entry.pathCodes,
     groupId: entry.groupId,
     groupLabel: entry.groupLabel,
-    coordinates: entry.coords,
+    coordinates: entry.mapCoords || entry.coords,
     ...extra,
   })
 }
