@@ -11,41 +11,60 @@
           <el-icon><Compass /></el-icon>
           使用当前位置
         </el-button>
-        <el-link :href="campusMapUrl" target="_blank" type="primary" underline="never">
-          官方地图
-        </el-link>
       </div>
     </div>
 
-    <el-autocomplete
-      v-model="query"
-      class="location-search"
-      :fetch-suggestions="fetchSuggestions"
-      :trigger-on-focus="true"
-      clearable
-      :placeholder="searchPlaceholder"
-      @select="handleSearchSelect"
-      @clear="clearSelectedValue"
-    >
-      <template #prefix>
-        <el-icon><Search /></el-icon>
-      </template>
-    </el-autocomplete>
-
-    <el-cascader
-      v-model="selectedPathCodes"
-      class="location-cascader"
-      :options="campusLocationTree"
-      :props="cascaderProps"
-      filterable
-      clearable
-      :show-all-levels="true"
-      placeholder="从层级里浏览地点"
-      @change="handleTreeChange"
-    />
+    <div :class="['geo-hint', { warning: geoHintWarning }]">
+      {{ geoHintText }}
+    </div>
 
     <div class="location-group-strip">
       <el-segmented v-model="activeGroup" :options="groupOptions" size="large" />
+    </div>
+
+    <CampusMapSketch
+      class="campus-sketch"
+      :entries="campusLocationEntries"
+      :selected-id="selectedEntry?.id || ''"
+      :active-group-id="activeGroup"
+      :highlighted-ids="highlightedIds"
+      :subtitle="mapSubtitle"
+      @select="selectEntry($event, 'map')"
+      @select-group="handleMapGroupSelect"
+    />
+
+    <div class="location-tool-grid">
+      <el-autocomplete
+        v-model="query"
+        class="location-search"
+        :fetch-suggestions="fetchSuggestions"
+        :trigger-on-focus="true"
+        clearable
+        :placeholder="searchPlaceholder"
+        @select="handleSearchSelect"
+        @clear="clearSelectedValue"
+      >
+        <template #prefix>
+          <el-icon><Search /></el-icon>
+        </template>
+      </el-autocomplete>
+
+      <el-cascader
+        v-model="selectedPathCodes"
+        class="location-cascader"
+        :options="campusLocationTree"
+        :props="cascaderProps"
+        filterable
+        clearable
+        :show-all-levels="true"
+        placeholder="按层级浏览地点"
+        @change="handleTreeChange"
+      />
+    </div>
+
+    <div class="location-result-heading">
+      <span>{{ activeGroupLabel }}</span>
+      <strong>{{ visibleEntries.length }} 个候选地点</strong>
     </div>
 
     <div class="location-chip-grid">
@@ -65,27 +84,20 @@
       <div class="location-summary__main">
         <span class="summary-badge">{{ selectedSourceLabel }}</span>
         <strong>{{ selectedEntry.pathLabel }}</strong>
-        <small>{{ selectedEntry.groupSummary }}</small>
-      </div>
-      <div class="location-summary__actions">
-        <el-link :href="selectedMapLinks.official" target="_blank" type="primary" underline="never">官方地图</el-link>
-        <el-link :href="selectedMapLinks.amap" target="_blank" type="primary" underline="never">高德</el-link>
-        <el-link :href="selectedMapLinks.baidu" target="_blank" type="primary" underline="never">百度</el-link>
+        <small>{{ selectedEntrySummary }}</small>
       </div>
     </div>
   </section>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Compass, Search } from '@element-plus/icons-vue'
 import {
-  buildCampusMapLinks,
   campusLocationEntries,
   campusLocationGroupOptions,
   campusLocationTree,
-  campusMapUrl,
   findCampusLocationByLabel,
   findCampusLocationByPathCodes,
   findNearestCampusLocation,
@@ -93,6 +105,7 @@ import {
   formatDistanceMeters,
   searchCampusLocations,
 } from '../data/campusLocations'
+import CampusMapSketch from './CampusMapSketch.vue'
 
 const props = defineProps({
   modelValue: {
@@ -121,22 +134,61 @@ const locating = ref(false)
 const selectedEntry = ref(null)
 const selectedPathCodes = ref([])
 const selectedSource = ref('手动选择')
+const selectedDistanceLabel = ref('')
+const geoPermissionState = ref('checking')
+const geoErrorMessage = ref('')
 
 const groupOptions = computed(() => campusLocationGroupOptions)
 
-const selectedMapLinks = computed(() => buildCampusMapLinks(selectedEntry.value))
-
 const selectedSourceLabel = computed(() => selectedSource.value || '地点选择')
 
-const visibleEntries = computed(() => {
+const activeSearchText = computed(() => {
   const text = query.value.trim()
+  if (!text) return ''
+  if (selectedEntry.value?.pathLabel === text) return ''
+  return text
+})
+
+const visibleEntries = computed(() => {
+  const text = activeSearchText.value
+  const limit = text ? 20 : activeGroup.value === 'all' ? 16 : 28
   if (text) {
-    return searchCampusLocations(text).slice(0, 12)
+    return searchCampusLocations(text, 'all', limit)
   }
-  if (activeGroup.value === 'all') {
-    return campusLocationEntries.slice(0, 12)
+  return searchCampusLocations('', activeGroup.value, limit)
+})
+
+const highlightedIds = computed(() => (activeSearchText.value ? visibleEntries.value.map((entry) => entry.id) : []))
+
+const activeGroupLabel = computed(() => {
+  if (activeSearchText.value) return '搜索结果'
+  const option = campusLocationGroupOptions.find((item) => item.value === activeGroup.value)
+  return option?.label || '全部'
+})
+
+const selectedEntrySummary = computed(() => {
+  if (!selectedEntry.value) return ''
+  const base = selectedEntry.value.note || selectedEntry.value.groupSummary
+  if (selectedDistanceLabel.value) {
+    return `${base}，距当前位置约 ${selectedDistanceLabel.value}`
   }
-  return campusLocationEntries.filter((entry) => entry.groupId === activeGroup.value).slice(0, 12)
+  return base
+})
+
+const geoHintText = computed(() => {
+  if (geoPermissionState.value === 'unsupported') return '当前浏览器不支持定位，可以直接在示意图上点选地点。'
+  if (geoPermissionState.value === 'insecure') return '定位需要 HTTPS 或 localhost 环境，可以直接在示意图上点选地点。'
+  if (geoPermissionState.value === 'denied') return '浏览器已拒绝定位，可以修改浏览器权限，或直接在示意图上点选地点。'
+  if (geoErrorMessage.value) return geoErrorMessage.value
+  if (geoPermissionState.value === 'granted') return '定位权限可用，点击按钮会选择距离当前位置最近的校园地点。'
+  return '点击“使用当前位置”时，浏览器会请求定位权限；也可以直接在示意图上点选地点。'
+})
+
+const geoHintWarning = computed(() => ['unsupported', 'insecure', 'denied'].includes(geoPermissionState.value) || Boolean(geoErrorMessage.value))
+
+const mapSubtitle = computed(() => {
+  if (activeGroup.value === 'all') return '点击彩色区域、标记或地图空白位置，即可选择附近校园地点。'
+  return `正在查看${activeGroupLabel.value}，点击标记或地图位置即可选择附近地点。`
 })
 
 const cascaderProps = {
@@ -144,6 +196,10 @@ const cascaderProps = {
   emitPath: true,
   expandTrigger: 'hover',
 }
+
+onMounted(() => {
+  refreshGeoPermissionState()
+})
 
 watch(
   () => props.modelValue,
@@ -155,7 +211,7 @@ watch(
 )
 
 function fetchSuggestions(text, cb) {
-  const results = searchCampusLocations(text).slice(0, 8).map((entry) => ({
+  const results = searchCampusLocations(text, 'all', 10).map((entry) => ({
     value: entry.pathLabel,
     entry,
   }))
@@ -182,6 +238,7 @@ function handleTreeChange(pathCodes) {
 function selectEntry(entry, source, extra = {}) {
   selectedEntry.value = entry
   selectedSource.value = sourceLabel(source)
+  selectedDistanceLabel.value = extra.distanceLabel || ''
   query.value = formatCampusLocationPath(entry)
   selectedPathCodes.value = entry.pathCodes.slice()
   emit('update:modelValue', entry.pathLabel)
@@ -193,10 +250,14 @@ function selectEntry(entry, source, extra = {}) {
     pathCodes: entry.pathCodes,
     groupId: entry.groupId,
     groupLabel: entry.groupLabel,
-    mapLinks: buildCampusMapLinks(entry),
     coordinates: entry.coords,
     ...extra,
   })
+}
+
+function handleMapGroupSelect(groupId) {
+  activeGroup.value = groupId
+  if (query.value) query.value = ''
 }
 
 function syncSelectionFromValue(value) {
@@ -220,6 +281,7 @@ function clearSelection() {
   selectedEntry.value = null
   selectedPathCodes.value = []
   selectedSource.value = '手动选择'
+  selectedDistanceLabel.value = ''
 }
 
 function clearSelectedValue() {
@@ -230,8 +292,13 @@ function clearSelectedValue() {
 }
 
 async function handleLocate() {
-  if (!navigator.geolocation) {
-    ElMessage.warning('当前浏览器不支持定位')
+  geoErrorMessage.value = ''
+  if (!canUseGeolocation()) {
+    ElMessage.warning(geoHintText.value)
+    return
+  }
+  if (geoPermissionState.value === 'denied') {
+    ElMessage.warning(geoHintText.value)
     return
   }
 
@@ -239,6 +306,7 @@ async function handleLocate() {
   navigator.geolocation.getCurrentPosition(
     (position) => {
       locating.value = false
+      geoPermissionState.value = 'granted'
       const coords = [position.coords.longitude, position.coords.latitude]
       const nearest = findNearestCampusLocation(coords)
       if (!nearest) {
@@ -255,9 +323,11 @@ async function handleLocate() {
         ElMessage.success(`已定位到 ${nearest.entry.label}`)
       }
     },
-    () => {
+    (error) => {
       locating.value = false
-      ElMessage.warning('定位未授权或不可用')
+      geoErrorMessage.value = formatGeoError(error)
+      refreshGeoPermissionState()
+      ElMessage.warning(geoErrorMessage.value)
     },
     {
       enableHighAccuracy: true,
@@ -267,10 +337,51 @@ async function handleLocate() {
   )
 }
 
+async function refreshGeoPermissionState() {
+  if (!canUseGeolocation({ skipPermissionState: true })) return
+  if (!navigator.permissions?.query) {
+    geoPermissionState.value = 'prompt'
+    return
+  }
+  try {
+    const status = await navigator.permissions.query({ name: 'geolocation' })
+    geoPermissionState.value = status.state
+    status.onchange = () => {
+      geoPermissionState.value = status.state
+      if (status.state !== 'denied') geoErrorMessage.value = ''
+    }
+  } catch {
+    geoPermissionState.value = 'prompt'
+  }
+}
+
+function canUseGeolocation({ skipPermissionState = false } = {}) {
+  if (!navigator.geolocation) {
+    geoPermissionState.value = 'unsupported'
+    return false
+  }
+  if (typeof window !== 'undefined' && !window.isSecureContext) {
+    geoPermissionState.value = 'insecure'
+    return false
+  }
+  if (!skipPermissionState && geoPermissionState.value === 'checking') {
+    geoPermissionState.value = 'prompt'
+  }
+  return true
+}
+
+function formatGeoError(error) {
+  if (error?.code === 1) return '定位权限被拒绝，可以修改浏览器权限，或直接在示意图上点选地点。'
+  if (error?.code === 2) return '暂时无法获取当前位置，可以直接在示意图上点选地点。'
+  if (error?.code === 3) return '定位请求超时，可以直接在示意图上点选地点。'
+  return '暂时无法使用当前位置，可以直接在示意图上点选地点。'
+}
+
 function sourceLabel(source) {
   if (source === 'search') return '搜索选择'
   if (source === 'tree') return '层级浏览'
   if (source === 'chip') return '快捷选择'
+  if (source === 'map') return '示意图点选'
   if (source === 'auto') return '自动定位'
   return '手动选择'
 }
@@ -319,20 +430,44 @@ function sourceLabel(source) {
   flex: 0 0 auto;
 }
 
+.geo-hint {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-soft-border);
+  border-radius: var(--border-radius-md);
+  background: var(--accent-soft-hover);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.geo-hint.warning {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--warning-color);
+}
+
+.campus-sketch {
+  margin-top: 14px;
+}
+
+.location-tool-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 0.62fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
 .location-search,
 .location-cascader {
   width: 100%;
   min-width: 0;
 }
 
-.location-search + .location-cascader {
-  margin-top: 10px;
-}
-
 .location-group-strip {
   width: 100%;
   min-width: 0;
-  margin-top: 14px;
+  margin-top: 12px;
   overflow-x: auto;
   padding-bottom: 2px;
 }
@@ -340,6 +475,25 @@ function sourceLabel(source) {
 .location-group-strip :deep(.el-segmented) {
   width: max-content;
   max-width: none;
+}
+
+.location-result-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-top: 14px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.location-result-heading span,
+.location-result-heading strong {
+  min-width: 0;
+}
+
+.location-result-heading strong {
+  color: var(--text-primary);
 }
 
 .location-chip-grid {
@@ -432,13 +586,8 @@ function sourceLabel(source) {
   margin-top: 4px;
   color: var(--text-secondary);
   font-size: 12px;
-}
-
-.location-summary__actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 10px;
-  align-items: center;
+  white-space: normal;
+  line-height: 1.45;
 }
 
 @media (max-width: 720px) {
@@ -452,9 +601,12 @@ function sourceLabel(source) {
     align-items: stretch;
   }
 
-  .map-actions,
-  .location-summary__actions {
+  .map-actions {
     justify-content: flex-start;
+  }
+
+  .location-tool-grid {
+    grid-template-columns: 1fr;
   }
 
   .location-chip-grid {

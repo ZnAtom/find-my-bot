@@ -1,7 +1,20 @@
 const CAMPUS_NAME = '上海科技大学浦东校区'
 const CAMPUS_CODE = 'pudong-campus'
 
-export const campusMapUrl = 'https://map.shanghaitech.edu.cn/'
+export const campusMapViewBox = { width: 1000, height: 680 }
+export const campusBoundary = [
+  [121.595651, 31.18312],
+  [121.597811, 31.1839],
+  [121.599931, 31.184364],
+  [121.599482, 31.186279],
+  [121.600513, 31.18643],
+  [121.604933, 31.186677],
+  [121.607192, 31.181757],
+  [121.605517, 31.18005],
+  [121.599211, 31.179193],
+  [121.598106, 31.179726],
+  [121.597378, 31.180692],
+]
 
 export const campusLocationGroups = [
   {
@@ -51,6 +64,7 @@ export const campusLocationGroups = [
       { id: 'shangke-canteen', label: '尚科餐厅', aliases: ['尚科餐厅1楼', '尚科餐厅二楼自选区'], coords: [121.603587, 31.183414], note: '餐饮' },
       { id: 'silk-road-canteen', label: '丝路餐厅', aliases: ['丝路'], coords: [121.603744, 31.183823], note: '餐饮' },
       { id: 'western-canteen', label: '西餐厅', aliases: ['西餐'], coords: [121.603856, 31.183209], note: '餐饮' },
+      { id: 'magnolia-canteen', label: '白玉兰一楼学生食堂', aliases: ['白玉兰餐厅', '白玉兰食堂'], coords: [121.603167, 31.182079], note: '学生餐饮' },
       { id: 'faculty-canteen', label: '教工餐厅与点餐区', aliases: ['教工餐厅'], coords: [121.60303, 31.181904], note: '教工餐饮' },
       { id: 'barber', label: '校园理发中心', aliases: ['理发店'], coords: [121.603924, 31.183769], note: '理发服务' },
       { id: 'souvenir', label: '纪念品专卖', aliases: ['纪念品店'], coords: [121.603138, 31.182528], note: '纪念品' },
@@ -59,17 +73,25 @@ export const campusLocationGroups = [
     ],
   },
   {
+    id: 'residential',
+    label: '住宿公共区',
+    summary: '学生公寓与日常公共空间',
+    items: [
+      { id: 'student-apartment-8', label: '学生公寓8号楼', aliases: ['学生公寓', '宿舍', '寝室'], coords: [121.60485, 31.183098], note: '学生住宿' },
+    ],
+  },
+  {
     id: 'sports',
     label: '运动休闲区',
     summary: '体育馆、运动场与户外场地',
     items: [
-      { id: 'gym', label: '体育馆', aliases: ['体育馆'], coords: [121.604238, 31.182653], note: '室内运动' },
+      { id: 'gym', label: '体育馆', aliases: ['体育馆'], coords: [121.604703, 31.182366], note: '室内运动' },
       { id: 'track', label: '运动场', aliases: ['操场'], coords: [121.606044, 31.182016], note: '户外运动' },
-      { id: 'swimming', label: '游泳馆', aliases: ['泳池'], coords: [121.605864, 31.18192], note: '游泳' },
-      { id: 'basketball', label: '篮球场', aliases: ['篮球'], coords: [121.60578, 31.18175], note: '球类运动' },
-      { id: 'tennis', label: '网球场', aliases: ['网球'], coords: [121.60622, 31.18222], note: '球类运动' },
-      { id: 'volleyball', label: '排球场', aliases: ['排球'], coords: [121.60595, 31.18158], note: '球类运动' },
-      { id: 'fitness', label: '健身场', aliases: ['健身区'], coords: [121.60562, 31.18143], note: '健身' },
+      { id: 'swimming', label: '游泳馆', aliases: ['泳池'], coords: [121.603681, 31.185629], note: '游泳' },
+      { id: 'basketball', label: '篮球场', aliases: ['篮球'], coords: [121.60592, 31.183423], note: '球类运动' },
+      { id: 'tennis', label: '网球场', aliases: ['网球'], coords: [121.602653, 31.185292], note: '球类运动' },
+      { id: 'volleyball', label: '排球场', aliases: ['排球'], coords: [121.605705, 31.183995], note: '球类运动' },
+      { id: 'fitness', label: '健身场', aliases: ['健身区'], coords: [121.606204, 31.183183], note: '健身' },
     ],
   },
   {
@@ -112,6 +134,18 @@ export const campusLocationGroupOptions = [
   ...campusLocationGroups.map((group) => ({ label: group.label, value: group.id })),
 ]
 
+export const campusGroupThemes = {
+  academic: { fill: 'rgba(37, 99, 235, 0.12)', stroke: '#2563eb', dot: '#2563eb' },
+  service: { fill: 'rgba(20, 184, 166, 0.12)', stroke: '#14b8a6', dot: '#0f766e' },
+  residential: { fill: 'rgba(132, 204, 22, 0.13)', stroke: '#84cc16', dot: '#65a30d' },
+  sports: { fill: 'rgba(249, 115, 22, 0.12)', stroke: '#f97316', dot: '#ea580c' },
+  transport: { fill: 'rgba(59, 130, 246, 0.12)', stroke: '#3b82f6', dot: '#1d4ed8' },
+}
+
+export function getCampusGroupTheme(groupId) {
+  return campusGroupThemes[groupId] || { fill: 'rgba(100, 116, 139, 0.10)', stroke: '#64748b', dot: '#475569' }
+}
+
 export function createLocationEntry(group, item) {
   const pathLabels = [CAMPUS_NAME, group.label, item.label]
   return {
@@ -143,21 +177,21 @@ export function findCampusLocationByLabel(label = '') {
   ) || null
 }
 
-export function searchCampusLocations(query = '', groupId = 'all') {
+export function searchCampusLocations(query = '', groupId = 'all', limit = 24) {
   const normalized = normalizeCampusText(query)
   const source = groupId === 'all'
     ? campusLocationEntries
     : campusLocationEntries.filter((entry) => entry.groupId === groupId)
 
   if (!normalized) {
-    return source.slice(0, 12)
+    return source.slice(0, limit)
   }
 
   return source
     .map((entry) => ({ entry, score: scoreCampusLocation(entry, normalized) }))
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.entry.pathLabel.length - b.entry.pathLabel.length)
-    .slice(0, 12)
+    .slice(0, limit)
     .map((item) => item.entry)
 }
 
@@ -174,27 +208,76 @@ export function findNearestCampusLocation(coords) {
   return best
 }
 
-export function buildCampusMapLinks(entry) {
-  if (!entry?.coords) {
+export function formatCampusLocationPath(entry) {
+  return entry?.pathLabel || ''
+}
+
+export function getCampusBounds(entries = campusLocationEntries, boundary = campusBoundary) {
+  const coords = []
+  for (const point of boundary) {
+    if (Array.isArray(point) && point.length === 2) coords.push(point)
+  }
+  for (const entry of entries) {
+    if (Array.isArray(entry.coords) && entry.coords.length === 2) coords.push(entry.coords)
+  }
+  if (coords.length === 0) {
     return {
-      official: campusMapUrl,
-      amap: campusMapUrl,
-      baidu: campusMapUrl,
+      minLng: 0,
+      maxLng: 1,
+      minLat: 0,
+      maxLat: 1,
     }
   }
-
-  const [lng, lat] = entry.coords
-  const title = encodeURIComponent(entry.label)
-  const content = encodeURIComponent(entry.pathLabel)
+  const lngs = coords.map((point) => point[0])
+  const lats = coords.map((point) => point[1])
   return {
-    official: campusMapUrl,
-    amap: `https://uri.amap.com/marker?position=${lng},${lat}&name=${title}&coordinate=gaode&callnative=0`,
-    baidu: `https://api.map.baidu.com/marker?location=${lat},${lng}&title=${title}&content=${content}&output=html`,
+    minLng: Math.min(...lngs),
+    maxLng: Math.max(...lngs),
+    minLat: Math.min(...lats),
+    maxLat: Math.max(...lats),
   }
 }
 
-export function formatCampusLocationPath(entry) {
-  return entry?.pathLabel || ''
+export function expandCampusBounds(bounds, ratio = 0.08) {
+  const lngSpan = Math.max(bounds.maxLng - bounds.minLng, 0.0001)
+  const latSpan = Math.max(bounds.maxLat - bounds.minLat, 0.0001)
+  return {
+    minLng: bounds.minLng - lngSpan * ratio,
+    maxLng: bounds.maxLng + lngSpan * ratio,
+    minLat: bounds.minLat - latSpan * ratio,
+    maxLat: bounds.maxLat + latSpan * ratio,
+  }
+}
+
+export function projectCampusPoint(coords, bounds = getCampusBounds(), viewBox = campusMapViewBox) {
+  if (!Array.isArray(coords) || coords.length !== 2) {
+    return { x: viewBox.width / 2, y: viewBox.height / 2 }
+  }
+  const [lng, lat] = coords
+  const safeBounds = expandCampusBounds(bounds)
+  const lngSpan = Math.max(safeBounds.maxLng - safeBounds.minLng, 0.0001)
+  const latSpan = Math.max(safeBounds.maxLat - safeBounds.minLat, 0.0001)
+  const x = ((lng - safeBounds.minLng) / lngSpan) * viewBox.width
+  const y = ((safeBounds.maxLat - lat) / latSpan) * viewBox.height
+  return {
+    x: Number(x.toFixed(2)),
+    y: Number(y.toFixed(2)),
+  }
+}
+
+export function projectCampusBoundary(boundary = campusBoundary, bounds = getCampusBounds(), viewBox = campusMapViewBox) {
+  return boundary
+    .map((point) => projectCampusPoint(point, bounds, viewBox))
+    .map((point) => `${point.x},${point.y}`)
+    .join(' ')
+}
+
+export function getCampusGroupEntries(groupId) {
+  return campusLocationEntries.filter((entry) => entry.groupId === groupId)
+}
+
+export function getCampusGroupBounds(groupId) {
+  return getCampusBounds(getCampusGroupEntries(groupId))
 }
 
 export function formatDistanceMeters(distanceMeters) {

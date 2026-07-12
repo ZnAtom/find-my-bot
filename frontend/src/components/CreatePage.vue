@@ -245,15 +245,6 @@
                 <span>{{ item.label }}</span>
               </div>
             </div>
-
-            <div v-if="selectedLocation?.mapLinks" class="preview-map-links">
-              <span>地图入口</span>
-              <div>
-                <a :href="selectedLocation.mapLinks.official" target="_blank" rel="noreferrer">官方地图</a>
-                <a :href="selectedLocation.mapLinks.amap" target="_blank" rel="noreferrer">高德</a>
-                <a :href="selectedLocation.mapLinks.baidu" target="_blank" rel="noreferrer">百度</a>
-              </div>
-            </div>
           </aside>
         </div>
       </div>
@@ -319,7 +310,6 @@ const uploadAction = computed(() => `${apiBase}/api/upload`)
 const matchDialogVisible = ref(false)
 const matchResults = ref([])
 const leaveContact = ref(false)
-const selectedLocation = ref(null)
 
 const steps = [
   { title: '基础信息', desc: '类型、名称、分类' },
@@ -475,10 +465,6 @@ watch(() => userStore.user, (user) => {
   if (user) syncContactFromUser({ onlyName: !contactFieldsVisible.value })
 })
 
-watch(() => formData.location, (value) => {
-  if (!value) selectedLocation.value = null
-})
-
 const currentDateTimeValue = () => {
   const now = new Date()
   const offsetMs = now.getTimezoneOffset() * 60 * 1000
@@ -532,11 +518,9 @@ const fillFromProfile = (targetField, userField) => {
 
 const handleLocationSelect = (payload) => {
   if (!payload) {
-    selectedLocation.value = null
     formData.location = ''
     return
   }
-  selectedLocation.value = payload
   formData.location = payload.pathLabel || payload.label || formData.location
   formRef.value?.clearValidate(['location'])
 }
@@ -991,34 +975,6 @@ const confirmSubmit = async () => {
 
 .readiness-dot.done {
   background: var(--foundit-teal);
-}
-
-.preview-map-links {
-  margin-top: 16px;
-  padding: 14px;
-  border: 1px solid var(--accent-soft-border);
-  border-radius: var(--border-radius-lg);
-  background: var(--accent-soft-hover);
-}
-
-.preview-map-links > span {
-  display: block;
-  margin-bottom: 10px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.preview-map-links div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.preview-map-links a {
-  color: var(--foundit-blue);
-  font-size: 13px;
-  font-weight: 800;
 }
 
 .anonymous-note {
