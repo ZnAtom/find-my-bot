@@ -26,190 +26,236 @@
           </button>
         </aside>
 
-        <section class="form-panel surface-section">
-          <el-form :model="formData" :rules="rules" ref="formRef" label-position="top">
-            <div v-show="currentStep === 0" class="step-content">
-              <div class="section-title">
-                <h2>基础信息</h2>
-                <p>先说明这是一条寻物还是招领记录。</p>
-              </div>
+        <div class="create-workspace">
+          <section class="form-panel surface-section">
+            <el-form :model="formData" :rules="rules" ref="formRef" label-position="top">
+              <div v-show="currentStep === 0" class="step-content">
+                <div class="section-title">
+                  <h2>基础信息</h2>
+                  <p>先说明这是一条寻物还是招领记录。</p>
+                </div>
 
-              <el-form-item label="信息类型" prop="direction">
-                <el-radio-group v-model="formData.direction" class="post-type-grid">
-                  <el-radio-button value="lost">
-                    <div class="post-type-card">
-                      <el-icon><Warning /></el-icon>
-                      <strong>我丢了东西</strong>
-                      <span>发布寻物记录</span>
-                    </div>
-                  </el-radio-button>
-                  <el-radio-button value="found">
-                    <div class="post-type-card">
-                      <el-icon><CircleCheck /></el-icon>
-                      <strong>我捡到东西</strong>
-                      <span>发布招领记录</span>
-                    </div>
-                  </el-radio-button>
-                </el-radio-group>
-              </el-form-item>
-
-              <div class="form-grid">
-                <el-form-item label="物品名称" prop="item_name">
-                  <el-input v-model="formData.item_name" placeholder="例如：黑色双肩包、校园卡、AirPods" size="large" />
+                <el-form-item label="信息类型" prop="direction">
+                  <el-radio-group v-model="formData.direction" class="post-type-grid">
+                    <el-radio-button value="lost">
+                      <div class="post-type-card">
+                        <el-icon><Warning /></el-icon>
+                        <strong>我丢了东西</strong>
+                        <span>发布寻物记录</span>
+                      </div>
+                    </el-radio-button>
+                    <el-radio-button value="found">
+                      <div class="post-type-card">
+                        <el-icon><CircleCheck /></el-icon>
+                        <strong>我捡到东西</strong>
+                        <span>发布招领记录</span>
+                      </div>
+                    </el-radio-button>
+                  </el-radio-group>
                 </el-form-item>
 
-                <el-form-item label="物品分类" prop="item_type">
-                  <el-select v-model="formData.item_type" placeholder="选择分类" size="large">
-                    <el-option v-for="type in itemTypes" :key="type" :label="type" :value="type" />
-                  </el-select>
-                </el-form-item>
-              </div>
-            </div>
+                <div class="form-grid">
+                  <el-form-item label="物品名称" prop="item_name">
+                    <el-input v-model="formData.item_name" placeholder="例如：黑色双肩包、校园卡、AirPods" size="large" />
+                  </el-form-item>
 
-            <div v-show="currentStep === 1" class="step-content">
-              <div class="section-title">
-                <h2>详情特征</h2>
-                <p>{{ detailStepDescription }}</p>
+                  <el-form-item label="物品分类" prop="item_type">
+                    <el-select v-model="formData.item_type" placeholder="选择分类" size="large">
+                      <el-option v-for="type in itemTypes" :key="type" :label="type" :value="type" />
+                    </el-select>
+                  </el-form-item>
+                </div>
               </div>
 
-              <div class="form-grid">
-                <el-form-item :label="locationLabel" prop="location">
-                  <el-select
+              <div v-show="currentStep === 1" class="step-content">
+                <div class="section-title">
+                  <h2>地点与特征</h2>
+                  <p>{{ detailStepDescription }}</p>
+                </div>
+
+                <el-form-item prop="location" class="location-form-item">
+                  <CampusLocationPanel
                     v-model="formData.location"
-                    placeholder="选择或输入地点"
-                    filterable
-                    allow-create
-                    default-first-option
-                    size="large"
-                  >
-                    <el-option v-for="loc in presetLocations" :key="loc" :label="loc" :value="loc" />
-                  </el-select>
-                </el-form-item>
-
-                <el-form-item :label="timeLabel">
-                  <el-date-picker
-                    v-model="formData.lost_time"
-                    type="datetime"
-                    placeholder="选择时间"
-                    size="large"
-                    style="width: 100%"
-                    value-format="YYYY-MM-DDTHH:mm:ss"
+                    :title="locationLabel"
+                    :subtitle="locationPanelSubtitle"
+                    :search-placeholder="locationSearchPlaceholder"
+                    @select="handleLocationSelect"
                   />
                 </el-form-item>
+
+                <div :class="['form-grid', { single: !isFound }]">
+                  <el-form-item :label="timeLabel">
+                    <el-date-picker
+                      v-model="formData.lost_time"
+                      type="datetime"
+                      placeholder="选择时间"
+                      size="large"
+                      style="width: 100%"
+                      value-format="YYYY-MM-DDTHH:mm:ss"
+                    />
+                  </el-form-item>
+
+                  <el-form-item v-if="isFound" label="现在存放处（选填）" prop="storage_location">
+                    <el-input v-model="formData.storage_location" placeholder="例如：已交到图书馆前台、暂存在二教门卫处" size="large" />
+                  </el-form-item>
+                </div>
+
+                <el-form-item label="详细特征" prop="description">
+                  <el-input
+                    type="textarea"
+                    v-model="formData.description"
+                    placeholder="颜色、品牌、外观、特殊标记、最后出现的位置等"
+                    :rows="5"
+                  />
+                </el-form-item>
+
+                <el-form-item label="图片">
+                  <el-upload
+                    class="image-upload"
+                    :action="uploadAction"
+                    :with-credentials="true"
+                    :before-upload="beforeUpload"
+                    :on-success="handleUploadSuccess"
+                    :on-error="handleUploadError"
+                    :on-remove="handleRemove"
+                    :file-list="fileList"
+                    list-type="picture-card"
+                    :limit="3"
+                    accept="image/*"
+                  >
+                    <div class="upload-trigger">
+                      <el-icon size="28"><Plus /></el-icon>
+                      <span>添加图片</span>
+                    </div>
+                  </el-upload>
+                  <div class="field-tip">最多 3 张，单张不超过 5MB。</div>
+                </el-form-item>
               </div>
 
-              <el-form-item v-if="isFound" label="现在存放处（选填）" prop="storage_location">
-                <el-input v-model="formData.storage_location" placeholder="例如：已交到图书馆前台、暂存在二教门卫处" size="large" />
-              </el-form-item>
+              <div v-show="currentStep === 2" class="step-content">
+                <div class="section-title">
+                  <h2>联系方式</h2>
+                  <p>{{ contactStepDescription }}</p>
+                </div>
 
-              <el-form-item label="详细特征" prop="description">
-                <el-input
-                  type="textarea"
-                  v-model="formData.description"
-                  placeholder="颜色、品牌、外观、特殊标记、最后出现的位置等"
-                  :rows="5"
+                <el-checkbox v-if="isFound" v-model="leaveContact" size="large" @change="handleLeaveContactChange">
+                  我想留下联系方式，方便失主联系我
+                </el-checkbox>
+
+                <el-alert
+                  v-if="isFound && !leaveContact"
+                  title="匿名发布不会绑定账号，发布后不能自行编辑或删除。失主仍可通过认领流程完成归还。"
+                  type="info"
+                  show-icon
+                  :closable="false"
+                  class="anonymous-note"
                 />
-              </el-form-item>
 
-              <el-form-item label="图片">
-                <el-upload
-                  class="image-upload"
-                  :action="uploadAction"
-                  :with-credentials="true"
-                  :before-upload="beforeUpload"
-                  :on-success="handleUploadSuccess"
-                  :on-error="handleUploadError"
-                  :on-remove="handleRemove"
-                  :file-list="fileList"
-                  list-type="picture-card"
-                  :limit="3"
-                  accept="image/*"
-                >
-                  <div class="upload-trigger">
-                    <el-icon size="28"><Plus /></el-icon>
-                    <span>添加图片</span>
-                  </div>
-                </el-upload>
-                <div class="field-tip">最多 3 张，单张不超过 5MB。</div>
-              </el-form-item>
-            </div>
+                <div v-if="contactFieldsVisible" class="form-grid">
+                  <el-form-item label="联系人姓名" prop="contact_person">
+                    <el-input v-model="formData.contact_person" placeholder="例如：王同学" size="large">
+                      <template #prefix><el-icon><User /></el-icon></template>
+                    </el-input>
+                  </el-form-item>
 
-            <div v-show="currentStep === 2" class="step-content">
-              <div class="section-title">
-                <h2>联系方式</h2>
-                <p>{{ contactStepDescription }}</p>
-              </div>
+                  <el-form-item label="手机号码" prop="contact_phone">
+                    <el-input v-model="formData.contact_phone" placeholder="用于联系，不会用于其它用途" size="large">
+                      <template #prefix><el-icon><Phone /></el-icon></template>
+                      <template #append>
+                        <el-button :disabled="!userStore.user?.phone" @click="fillFromProfile('contact_phone', 'phone')">自动填写</el-button>
+                      </template>
+                    </el-input>
+                  </el-form-item>
+                </div>
 
-              <el-checkbox v-if="isFound" v-model="leaveContact" size="large" @change="handleLeaveContactChange">
-                我想留下联系方式，方便失主联系我
-              </el-checkbox>
-
-              <el-alert
-                v-if="isFound && !leaveContact"
-                title="匿名发布不会绑定账号，发布后不能自行编辑或删除。失主仍可通过认领流程完成归还。"
-                type="info"
-                show-icon
-                :closable="false"
-                class="anonymous-note"
-              />
-
-              <div v-if="contactFieldsVisible" class="form-grid">
-                <el-form-item label="联系人姓名" prop="contact_person">
-                  <el-input v-model="formData.contact_person" placeholder="例如：王同学" size="large">
-                    <template #prefix><el-icon><User /></el-icon></template>
+                <el-form-item v-if="contactFieldsVisible" label="QQ 号码">
+                  <el-input v-model="formData.contact_qq" placeholder="可选" size="large">
+                    <template #prefix><el-icon><ChatDotRound /></el-icon></template>
+                    <template #append>
+                      <el-button :disabled="!userStore.user?.qq" @click="fillFromProfile('contact_qq', 'qq')">自动填写</el-button>
+                    </template>
                   </el-input>
                 </el-form-item>
 
-                <el-form-item label="手机号码" prop="contact_phone">
-                  <el-input v-model="formData.contact_phone" placeholder="用于联系，不会用于其它用途" size="large">
-                    <template #prefix><el-icon><Phone /></el-icon></template>
+                <el-form-item v-if="contactFieldsVisible" label="邮箱" prop="contact_email">
+                  <el-input v-model="formData.contact_email" placeholder="可选" size="large">
+                    <template #prefix><el-icon><Message /></el-icon></template>
                     <template #append>
-                      <el-button :disabled="!userStore.user?.phone" @click="fillFromProfile('contact_phone', 'phone')">自动填写</el-button>
+                      <el-button :disabled="!userStore.user?.email" @click="fillFromProfile('contact_email', 'email')">自动填写</el-button>
                     </template>
                   </el-input>
                 </el-form-item>
               </div>
+            </el-form>
 
-              <el-form-item v-if="contactFieldsVisible" label="QQ 号码">
-                <el-input v-model="formData.contact_qq" placeholder="可选" size="large">
-                  <template #prefix><el-icon><ChatDotRound /></el-icon></template>
-                  <template #append>
-                    <el-button :disabled="!userStore.user?.qq" @click="fillFromProfile('contact_qq', 'qq')">自动填写</el-button>
-                  </template>
-                </el-input>
-              </el-form-item>
-
-              <el-form-item v-if="contactFieldsVisible" label="邮箱" prop="contact_email">
-                <el-input v-model="formData.contact_email" placeholder="可选" size="large">
-                  <template #prefix><el-icon><Message /></el-icon></template>
-                  <template #append>
-                    <el-button :disabled="!userStore.user?.email" @click="fillFromProfile('contact_email', 'email')">自动填写</el-button>
-                  </template>
-                </el-input>
-              </el-form-item>
+            <div class="form-actions">
+              <el-button v-if="currentStep > 0" round size="large" @click="prevStep">
+                上一步
+              </el-button>
+              <span v-else></span>
+              <el-button v-if="currentStep < 2" type="primary" round size="large" @click="nextStep">
+                下一步
+              </el-button>
+              <el-button
+                v-else
+                type="primary"
+                round
+                size="large"
+                :loading="submitting || finalSubmitting"
+                @click="submitForm"
+              >
+                {{ submitButtonText }}
+              </el-button>
             </div>
-          </el-form>
+          </section>
 
-          <div class="form-actions">
-            <el-button v-if="currentStep > 0" round size="large" @click="prevStep">
-              上一步
-            </el-button>
-            <span v-else></span>
-            <el-button v-if="currentStep < 2" type="primary" round size="large" @click="nextStep">
-              下一步
-            </el-button>
-            <el-button
-              v-else
-              type="primary"
-              round
-              size="large"
-              :loading="submitting || finalSubmitting"
-              @click="submitForm"
-            >
-              {{ submitButtonText }}
-            </el-button>
-          </div>
-        </section>
+          <aside class="preview-panel surface-section">
+            <p class="page-kicker">Live Preview</p>
+            <h2>发布预览</h2>
+            <article class="record-preview">
+              <div class="preview-tags">
+                <span :class="['status-chip', isFound ? 'found' : 'lost']">{{ isFound ? '招领中' : '待找回' }}</span>
+                <span class="type-chip">{{ formData.item_type || '未选分类' }}</span>
+              </div>
+              <h3>{{ formData.item_name || '物品名称' }}</h3>
+              <p>{{ formData.description || '填写颜色、品牌、外观或特殊标记后，这里会生成发布摘要。' }}</p>
+              <div class="preview-meta">
+                <span>
+                  <el-icon><MapLocation /></el-icon>
+                  {{ previewLocation }}
+                </span>
+                <span>
+                  <el-icon><Clock /></el-icon>
+                  {{ previewTime }}
+                </span>
+                <span>
+                  <el-icon><Picture /></el-icon>
+                  {{ uploadedUrls.length ? `${uploadedUrls.length} 张图片` : '未上传图片' }}
+                </span>
+                <span>
+                  <el-icon><User /></el-icon>
+                  {{ previewContactLabel }}
+                </span>
+              </div>
+            </article>
+
+            <div class="readiness-list">
+              <div v-for="item in readinessItems" :key="item.label" class="readiness-row">
+                <span :class="['readiness-dot', { done: item.done }]"></span>
+                <span>{{ item.label }}</span>
+              </div>
+            </div>
+
+            <div v-if="selectedLocation?.mapLinks" class="preview-map-links">
+              <span>地图入口</span>
+              <div>
+                <a :href="selectedLocation.mapLinks.official" target="_blank" rel="noreferrer">官方地图</a>
+                <a :href="selectedLocation.mapLinks.amap" target="_blank" rel="noreferrer">高德</a>
+                <a :href="selectedLocation.mapLinks.baidu" target="_blank" rel="noreferrer">百度</a>
+              </div>
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
 
@@ -255,9 +301,10 @@
 import { computed, onMounted, ref, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Plus, User, Phone, ChatDotRound, Warning, CircleCheck, Message } from '@element-plus/icons-vue'
+import { Plus, User, Phone, ChatDotRound, Warning, CircleCheck, Message, MapLocation, Clock, Picture } from '@element-plus/icons-vue'
 import { apiBase, lostItemsApi } from '../api'
 import { useUserStore } from '../stores/user'
+import CampusLocationPanel from './CampusLocationPanel.vue'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -272,15 +319,15 @@ const uploadAction = computed(() => `${apiBase}/api/upload`)
 const matchDialogVisible = ref(false)
 const matchResults = ref([])
 const leaveContact = ref(false)
+const selectedLocation = ref(null)
 
 const steps = [
   { title: '基础信息', desc: '类型、名称、分类' },
-  { title: '详情特征', desc: '地点、时间、图片' },
+  { title: '地点与特征', desc: '地点、时间、图片' },
   { title: '联系方式', desc: '姓名、手机、QQ/邮箱' },
 ]
 
 const itemTypes = ['证件卡片', '电子产品', '衣物鞋帽', '学习用品', '钱包钥匙', '其他']
-const presetLocations = ['图书馆', '教学楼1号楼', '教学楼2号楼', '教学楼3号楼', '食堂', '宿舍区', '体育馆', '学生活动中心', '其他']
 
 const formData = reactive({
   item_name: '',
@@ -303,13 +350,13 @@ const contactFieldsVisible = computed(() => isLost.value || leaveContact.value)
 const pageTitle = computed(() => isFound.value ? '发布招领信息' : '发布寻物信息')
 const pageSubtitle = computed(() => (
   isFound.value
-    ? '无需登录即可发布招领。填写基础信息和存放处，联系方式可选择是否留下。'
-    : '登记丢失物品信息，方便系统匹配和他人联系你。'
+    ? '无需登录即可发布招领。地点可自动定位，联系方式可选择是否留下。'
+    : '登记丢失物品信息，系统会结合地点、时间、图片和描述进行匹配。'
 ))
 const detailStepDescription = computed(() => (
   isFound.value
-    ? '填写捡到地点、当前存放处和可核对的特征。当前存放处可以稍后补充。'
-    : '填写丢失地点、时间和详细特征，匹配结果会更准确。'
+    ? '选择捡到地点，填写当前存放处和可核对的特征。'
+    : '选择丢失地点，填写时间和详细特征，匹配结果会更准确。'
 ))
 const contactStepDescription = computed(() => (
   isFound.value
@@ -317,8 +364,31 @@ const contactStepDescription = computed(() => (
     : '寻物信息需要至少一种联系方式，默认登录用户可见。'
 ))
 const locationLabel = computed(() => isFound.value ? '捡到地点（选填）' : '丢失地点')
+const locationPanelSubtitle = computed(() => (
+  isFound.value
+    ? '可以按校园地点层级选择，也可以使用当前位置自动填写捡到地点。'
+    : '建议选择具体楼宇或服务点，系统会把地点信息一起用于匹配。'
+))
+const locationSearchPlaceholder = computed(() => (
+  isFound.value ? '搜索捡到地点，例如图书馆、菜鸟驿站' : '搜索丢失地点，例如信息学院、尚科餐厅'
+))
 const timeLabel = computed(() => isFound.value ? '捡到时间' : '丢失时间')
 const submitButtonText = computed(() => isFound.value ? '发布招领' : '发布寻物')
+const contactMethodCount = computed(() => [formData.contact_phone, formData.contact_qq, formData.contact_email].filter(Boolean).length)
+const previewLocation = computed(() => formData.location || (isFound.value ? '地点可稍后补充' : '待选择地点'))
+const previewTime = computed(() => formatPreviewTime(formData.lost_time))
+const previewContactLabel = computed(() => {
+  if (!isContactRequired()) return isFound.value && !leaveContact.value ? '匿名招领' : '联系方式可选'
+  if (contactMethodCount.value === 0) return '待填写联系方式'
+  return `${contactMethodCount.value} 种联系方式`
+})
+const readinessItems = computed(() => [
+  { label: '类型、名称和分类', done: Boolean(formData.direction && formData.item_name && formData.item_type) },
+  { label: isFound.value ? '地点或存放处' : '丢失地点', done: isFound.value ? Boolean(formData.location || formData.storage_location) : Boolean(formData.location) },
+  { label: '时间信息', done: Boolean(formData.lost_time) },
+  { label: '特征描述或图片', done: Boolean(formData.description || uploadedUrls.value.length) },
+  { label: '联系方式设置', done: !isContactRequired() || contactMethodCount.value > 0 },
+])
 
 function isContactRequired() {
   return formData.direction === 'lost' || (formData.direction === 'found' && leaveContact.value)
@@ -405,6 +475,10 @@ watch(() => userStore.user, (user) => {
   if (user) syncContactFromUser({ onlyName: !contactFieldsVisible.value })
 })
 
+watch(() => formData.location, (value) => {
+  if (!value) selectedLocation.value = null
+})
+
 const currentDateTimeValue = () => {
   const now = new Date()
   const offsetMs = now.getTimezoneOffset() * 60 * 1000
@@ -454,6 +528,24 @@ const fillFromProfile = (targetField, userField) => {
   }
   formData[targetField] = value
   ElMessage.success('已自动填写')
+}
+
+const handleLocationSelect = (payload) => {
+  if (!payload) {
+    selectedLocation.value = null
+    formData.location = ''
+    return
+  }
+  selectedLocation.value = payload
+  formData.location = payload.pathLabel || payload.label || formData.location
+  formRef.value?.clearValidate(['location'])
+}
+
+const formatPreviewTime = (value) => {
+  if (!value) return '未选择时间'
+  const [date, time = ''] = String(value).split('T')
+  if (!date) return value
+  return `${date} ${time.slice(0, 5)}`.trim()
 }
 
 const formatApiError = (error, fallback = '未知错误') => {
@@ -636,9 +728,25 @@ const confirmSubmit = async () => {
 
 .create-layout {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr);
   gap: 18px;
   align-items: start;
+}
+
+.create-layout > * {
+  min-width: 0;
+}
+
+.create-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+  min-width: 0;
+}
+
+.create-workspace > * {
+  min-width: 0;
 }
 
 .steps-panel {
@@ -704,7 +812,21 @@ const confirmSubmit = async () => {
 }
 
 .form-panel {
+  min-width: 0;
   padding: 28px;
+}
+
+.preview-panel {
+  min-width: 0;
+  position: sticky;
+  top: calc(var(--header-height) + 22px);
+  padding: 22px;
+}
+
+.preview-panel h2 {
+  margin: 0 0 16px;
+  font-size: 22px;
+  font-weight: 800;
 }
 
 .section-title {
@@ -727,6 +849,14 @@ const confirmSubmit = async () => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.form-grid.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.location-form-item :deep(.el-form-item__content) {
+  width: 100%;
 }
 
 .post-type-grid {
@@ -777,6 +907,118 @@ const confirmSubmit = async () => {
   margin-top: 8px;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.record-preview {
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  background: var(--surface-muted);
+}
+
+.preview-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.record-preview h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.record-preview p {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.preview-meta {
+  display: grid;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.preview-meta span {
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.preview-meta .el-icon {
+  margin-top: 2px;
+  color: var(--foundit-blue);
+  flex: 0 0 auto;
+}
+
+.readiness-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+}
+
+.readiness-row {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.readiness-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  flex: 0 0 auto;
+}
+
+.readiness-dot.done {
+  background: var(--foundit-teal);
+}
+
+.preview-map-links {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--accent-soft-border);
+  border-radius: var(--border-radius-lg);
+  background: var(--accent-soft-hover);
+}
+
+.preview-map-links > span {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.preview-map-links div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.preview-map-links a {
+  color: var(--foundit-blue);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .anonymous-note {
@@ -862,6 +1104,16 @@ const confirmSubmit = async () => {
   gap: 10px;
 }
 
+@media (max-width: 1180px) {
+  .create-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-panel {
+    position: static;
+  }
+}
+
 @media (max-width: 900px) {
   .create-layout {
     grid-template-columns: 1fr;
@@ -873,13 +1125,18 @@ const confirmSubmit = async () => {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .preview-panel {
+    position: static;
+  }
+
   .step-row + .step-row {
     margin-top: 0;
   }
 }
 
 @media (max-width: 680px) {
-  .form-panel {
+  .form-panel,
+  .preview-panel {
     padding: 20px;
   }
 
