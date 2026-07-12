@@ -121,7 +121,6 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 @app.post("/api/upload")
 async def upload_image(request: Request, file: UploadFile = File(...)):
     """上传图片，返回可访问的 URL"""
-    get_current_user(request)
     verify_csrf_origin(request)
 
     # 校验文件扩展名（统一小写）
@@ -366,6 +365,7 @@ def serialize_item_for_user(row, user: Optional[dict], claim_item_ids: Optional[
         item["contact_person"] = "匿名"
         item["contact_phone"] = None
         item["contact_qq"] = None
+        item["contact_email"] = None
         item["storage_location"] = None
     return item
 
@@ -571,9 +571,10 @@ class LostItemCreate(BaseModel):
     status: Optional[str] = None
     contact_visibility: Optional[str] = None
     image_url: Optional[str] = None
-    contact_person: str
+    contact_person: Optional[str] = None
     contact_phone: Optional[str] = None
     contact_qq: Optional[str] = None
+    contact_email: Optional[str] = None
 
 class LostItemUpdate(BaseModel):
     item_name: Optional[str] = None
@@ -587,6 +588,7 @@ class LostItemUpdate(BaseModel):
     status: Optional[str] = None
     contact_visibility: Optional[str] = None
     image_url: Optional[str] = None
+    contact_email: Optional[str] = None
 
 class LostItemResponse(BaseModel):
     id: int
@@ -601,9 +603,10 @@ class LostItemResponse(BaseModel):
     status: str
     contact_visibility: str
     image_url: Optional[str] = None
-    contact_person: str
+    contact_person: Optional[str] = None
     contact_phone: Optional[str] = None
     contact_qq: Optional[str] = None
+    contact_email: Optional[str] = None
     user_id: Optional[int] = None
     created_at: str
     updated_at: str
@@ -1165,10 +1168,33 @@ def match_check(item: MatchCheckRequest, request: Request, limit: int = 5):
 
 @app.post("/api/lost-items", response_model=LostItemResponse)
 def create_lost_item(item: LostItemCreate, request: Request):
-    current_user = get_current_user(request)
     verify_csrf_origin(request)
     direction, status = _resolve_create_state(item.direction, item.status, item.post_type)
-    contact_visibility = _coerce_contact_visibility(item.contact_visibility)
+    current_user = get_optional_user(request)
+    has_contact = any(none_if_empty(value) for value in (item.contact_phone, item.contact_qq, item.contact_email))
+    if direction == "lost" and not current_user:
+        raise HTTPException(status_code=401, detail="发布寻物信息需要先登录")
+    if direction == "lost" and not has_contact:
+        raise HTTPException(status_code=400, detail="发布寻物信息至少需要填写一种联系方式")
+    if direction == "found" and not current_user and has_contact:
+        raise HTTPException(status_code=401, detail="匿名招领不能填写联系方式，请登录后实名发布")
+    if direction == "found" and not none_if_empty(item.storage_location):
+        raise HTTPException(status_code=400, detail="发布招领信息需要填写当前存放处")
+
+    if direction == "found" and not current_user:
+        contact_visibility = "private"
+    elif item.contact_visibility is not None:
+        contact_visibility = _coerce_contact_visibility(item.contact_visibility)
+    elif direction == "lost":
+        contact_visibility = "logged_in"
+    elif has_contact:
+        contact_visibility = "claimed"
+    else:
+        contact_visibility = "private"
+    contact_person = none_if_empty(item.contact_person)
+    if not contact_person:
+        contact_person = current_user["name"] if current_user else "匿名"
+
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, item.image_url)
@@ -1180,14 +1206,14 @@ def create_lost_item(item: LostItemCreate, request: Request):
         cur.execute(
             """INSERT INTO lost_items
                (id, item_name, item_type, description, location, storage_location, lost_time, direction, status, contact_visibility,
-                image_url, contact_person, contact_phone, contact_qq, user_id, vector)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
+                image_url, contact_person, contact_phone, contact_qq, contact_email, user_id, vector)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
             (next_id, item.item_name, none_if_empty(item.item_type),
              none_if_empty(item.description), none_if_empty(item.location),
              none_if_empty(item.storage_location), none_if_empty(item.lost_time), direction, status, contact_visibility,
-             none_if_empty(item.image_url), item.contact_person,
-             none_if_empty(item.contact_phone), none_if_empty(item.contact_qq),
-             current_user["id"],
+             none_if_empty(item.image_url), contact_person,
+             none_if_empty(item.contact_phone), none_if_empty(item.contact_qq), none_if_empty(item.contact_email),
+             current_user["id"] if current_user else None,
              none_if_empty(vector))
         )
         conn.commit()
@@ -1249,6 +1275,9 @@ def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
         if item.contact_visibility is not None:
             update_fields.append("contact_visibility = %s")
             params.append(_coerce_contact_visibility(item.contact_visibility))
+        if item.contact_email is not None:
+            update_fields.append("contact_email = %s")
+            params.append(none_if_empty(item.contact_email))
         if item.image_url is not None:
             update_fields.append("image_url = %s")
             params.append(none_if_empty(item.image_url))

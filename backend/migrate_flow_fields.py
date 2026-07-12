@@ -30,6 +30,7 @@ def main():
     try:
         cur.execute("ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS storage_location VARCHAR(200)")
         cur.execute("ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS contact_visibility VARCHAR(20)")
+        cur.execute("ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS contact_email VARCHAR(100)")
         cur.execute("ALTER TABLE lost_items ALTER COLUMN contact_visibility SET DEFAULT 'private'")
         cur.execute(
             """

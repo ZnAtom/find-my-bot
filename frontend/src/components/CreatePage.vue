@@ -4,8 +4,8 @@
       <header class="create-header">
         <div>
           <p class="page-kicker">Create Record</p>
-          <h1 class="page-title">发布寻物或招领</h1>
-          <p class="page-subtitle">补全物品、地点、图片和联系方式。提交前会先检查是否已有疑似匹配记录。</p>
+          <h1 class="page-title">{{ pageTitle }}</h1>
+          <p class="page-subtitle">{{ pageSubtitle }}</p>
         </div>
       </header>
 
@@ -69,11 +69,11 @@
             <div v-show="currentStep === 1" class="step-content">
               <div class="section-title">
                 <h2>详情特征</h2>
-                <p>地点、时间和细节越清楚，匹配结果越容易核对。</p>
+                <p>{{ detailStepDescription }}</p>
               </div>
 
               <div class="form-grid">
-                <el-form-item label="地点" prop="location">
+                <el-form-item :label="locationLabel" prop="location">
                   <el-select
                     v-model="formData.location"
                     placeholder="选择或输入地点"
@@ -86,7 +86,7 @@
                   </el-select>
                 </el-form-item>
 
-                <el-form-item label="相关时间">
+                <el-form-item :label="timeLabel">
                   <el-date-picker
                     v-model="formData.lost_time"
                     type="datetime"
@@ -97,6 +97,10 @@
                   />
                 </el-form-item>
               </div>
+
+              <el-form-item v-if="isFound" label="现在存放处" prop="storage_location">
+                <el-input v-model="formData.storage_location" placeholder="例如：已交到图书馆前台、暂存在二教门卫处" size="large" />
+              </el-form-item>
 
               <el-form-item label="详细特征" prop="description">
                 <el-input
@@ -133,10 +137,23 @@
             <div v-show="currentStep === 2" class="step-content">
               <div class="section-title">
                 <h2>联系方式</h2>
-                <p>发布后将用于双方联系和身份核对。</p>
+                <p>{{ contactStepDescription }}</p>
               </div>
 
-              <div class="form-grid">
+              <el-checkbox v-if="isFound" v-model="leaveContact" size="large" @change="handleLeaveContactChange">
+                我想留下联系方式，方便失主联系我
+              </el-checkbox>
+
+              <el-alert
+                v-if="isFound && !leaveContact"
+                title="匿名发布不会绑定账号，发布后不能自行编辑或删除。失主仍可通过认领流程完成归还。"
+                type="info"
+                show-icon
+                :closable="false"
+                class="anonymous-note"
+              />
+
+              <div v-if="contactFieldsVisible" class="form-grid">
                 <el-form-item label="联系人姓名" prop="contact_person">
                   <el-input v-model="formData.contact_person" placeholder="例如：王同学" size="large">
                     <template #prefix><el-icon><User /></el-icon></template>
@@ -146,13 +163,28 @@
                 <el-form-item label="手机号码" prop="contact_phone">
                   <el-input v-model="formData.contact_phone" placeholder="用于联系，不会用于其它用途" size="large">
                     <template #prefix><el-icon><Phone /></el-icon></template>
+                    <template #append>
+                      <el-button :disabled="!userStore.user?.phone" @click="fillFromProfile('contact_phone', 'phone')">自动填写</el-button>
+                    </template>
                   </el-input>
                 </el-form-item>
               </div>
 
-              <el-form-item label="QQ 号码">
+              <el-form-item v-if="contactFieldsVisible" label="QQ 号码">
                 <el-input v-model="formData.contact_qq" placeholder="可选" size="large">
                   <template #prefix><el-icon><ChatDotRound /></el-icon></template>
+                  <template #append>
+                    <el-button :disabled="!userStore.user?.qq" @click="fillFromProfile('contact_qq', 'qq')">自动填写</el-button>
+                  </template>
+                </el-input>
+              </el-form-item>
+
+              <el-form-item v-if="contactFieldsVisible" label="邮箱" prop="contact_email">
+                <el-input v-model="formData.contact_email" placeholder="可选" size="large">
+                  <template #prefix><el-icon><Message /></el-icon></template>
+                  <template #append>
+                    <el-button :disabled="!userStore.user?.email" @click="fillFromProfile('contact_email', 'email')">自动填写</el-button>
+                  </template>
                 </el-input>
               </el-form-item>
             </div>
@@ -171,10 +203,10 @@
               type="primary"
               round
               size="large"
-              :loading="submitting"
+              :loading="submitting || finalSubmitting"
               @click="submitForm"
             >
-              发布记录
+              {{ submitButtonText }}
             </el-button>
           </div>
         </section>
@@ -198,6 +230,7 @@
                 <p>联系人：{{ item.contact_person || '未填写' }}</p>
                 <p v-if="item.contact_phone">电话：{{ item.contact_phone }}</p>
                 <p v-if="item.contact_qq">QQ：{{ item.contact_qq }}</p>
+                <p v-if="item.contact_email">邮箱：{{ item.contact_email }}</p>
               </div>
             </div>
             <el-button v-if="!item.showContact" type="success" plain round @click="item.showContact = true">
@@ -219,10 +252,10 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, reactive } from 'vue'
+import { computed, onMounted, ref, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Plus, User, Phone, ChatDotRound, Warning, CircleCheck } from '@element-plus/icons-vue'
+import { Plus, User, Phone, ChatDotRound, Warning, CircleCheck, Message } from '@element-plus/icons-vue'
 import { apiBase, lostItemsApi } from '../api'
 import { useUserStore } from '../stores/user'
 
@@ -238,11 +271,12 @@ const fileList = ref([])
 const uploadAction = computed(() => `${apiBase}/api/upload`)
 const matchDialogVisible = ref(false)
 const matchResults = ref([])
+const leaveContact = ref(false)
 
 const steps = [
   { title: '基础信息', desc: '类型、名称、分类' },
   { title: '详情特征', desc: '地点、时间、图片' },
-  { title: '联系方式', desc: '姓名、手机、QQ' },
+  { title: '联系方式', desc: '姓名、手机、QQ/邮箱' },
 ]
 
 const itemTypes = ['证件卡片', '电子产品', '衣物鞋帽', '学习用品', '钱包钥匙', '其他']
@@ -253,40 +287,202 @@ const formData = reactive({
   item_type: '',
   description: '',
   location: '',
+  storage_location: '',
   lost_time: '',
   direction: 'lost',
   image_url: '',
   contact_person: '',
   contact_phone: '',
   contact_qq: '',
+  contact_email: '',
 })
+
+const isFound = computed(() => formData.direction === 'found')
+const isLost = computed(() => formData.direction === 'lost')
+const contactFieldsVisible = computed(() => isLost.value || leaveContact.value)
+const pageTitle = computed(() => isFound.value ? '发布招领信息' : '发布寻物信息')
+const pageSubtitle = computed(() => (
+  isFound.value
+    ? '无需登录即可发布招领。填写基础信息和存放处，联系方式可选择是否留下。'
+    : '登记丢失物品信息，方便系统匹配和他人联系你。'
+))
+const detailStepDescription = computed(() => (
+  isFound.value
+    ? '填写捡到地点、当前存放处和可核对的特征。'
+    : '填写丢失地点、时间和详细特征，匹配结果会更准确。'
+))
+const contactStepDescription = computed(() => (
+  isFound.value
+    ? '可以匿名发布；如果希望失主直接联系你，需要登录后留下联系方式。'
+    : '寻物信息需要至少一种联系方式，默认登录用户可见。'
+))
+const locationLabel = computed(() => isFound.value ? '捡到地点（选填）' : '丢失地点')
+const timeLabel = computed(() => isFound.value ? '捡到时间' : '丢失时间')
+const submitButtonText = computed(() => isFound.value ? '发布招领' : '发布寻物')
+
+function isContactRequired() {
+  return formData.direction === 'lost' || (formData.direction === 'found' && leaveContact.value)
+}
+
+function validateLocation(rule, value, callback) {
+  if (formData.direction === 'lost' && !value) {
+    callback(new Error('请输入丢失地点'))
+    return
+  }
+  callback()
+}
+
+function validateStorageLocation(rule, value, callback) {
+  if (formData.direction === 'found' && !value) {
+    callback(new Error('请输入当前存放处'))
+    return
+  }
+  callback()
+}
+
+function validateDescription(rule, value, callback) {
+  if (formData.direction === 'lost' && !value) {
+    callback(new Error('请输入详细特征'))
+    return
+  }
+  callback()
+}
+
+function validateContactPerson(rule, value, callback) {
+  if (isContactRequired() && !value) {
+    callback(new Error('请输入联系人'))
+    return
+  }
+  callback()
+}
+
+function validatePhone(rule, value, callback) {
+  if (value && !/^1[3-9]\d{9}$/.test(value)) {
+    callback(new Error('请输入正确的手机号'))
+    return
+  }
+  callback()
+}
+
+function validateEmail(rule, value, callback) {
+  if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    callback(new Error('请输入正确的邮箱'))
+    return
+  }
+  callback()
+}
 
 const rules = {
   direction: [{ required: true, message: '请选择信息类型', trigger: 'change' }],
   item_name: [{ required: true, message: '请输入物品名称', trigger: 'blur' }],
   item_type: [{ required: true, message: '请选择物品分类', trigger: 'change' }],
-  location: [{ required: true, message: '请输入地点', trigger: 'blur' }],
-  description: [{ required: true, message: '请输入详细特征', trigger: 'blur' }],
-  contact_person: [{ required: true, message: '请输入联系人', trigger: 'blur' }],
-  contact_phone: [{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' }],
+  location: [{ validator: validateLocation, trigger: 'change' }],
+  storage_location: [{ validator: validateStorageLocation, trigger: 'blur' }],
+  description: [{ validator: validateDescription, trigger: 'blur' }],
+  contact_person: [{ validator: validateContactPerson, trigger: 'blur' }],
+  contact_phone: [{ validator: validatePhone, trigger: 'blur' }],
+  contact_email: [{ validator: validateEmail, trigger: 'blur' }],
 }
 
 const stepFields = [
   ['direction', 'item_name', 'item_type'],
-  ['location', 'description'],
-  ['contact_person', 'contact_phone'],
+  ['location', 'storage_location', 'description'],
+  ['contact_person', 'contact_phone', 'contact_email'],
 ]
 
 onMounted(() => {
   if (route.query.type === 'lost' || route.query.type === 'found') {
     formData.direction = route.query.type
   }
+  formData.lost_time = currentDateTimeValue()
   if (userStore.user) {
-    formData.contact_person = formData.contact_person || userStore.user.name || userStore.user.student_id || ''
-    formData.contact_phone = formData.contact_phone || userStore.user.phone || ''
-    formData.contact_qq = formData.contact_qq || userStore.user.qq || ''
+    syncContactFromUser({ onlyName: true })
   }
+  enforceLoginForCurrentFlow()
 })
+
+watch(() => formData.direction, () => {
+  if (formData.direction === 'found') {
+    leaveContact.value = false
+    clearContactFields({ keepName: Boolean(userStore.user) })
+  }
+  enforceLoginForCurrentFlow()
+  formRef.value?.clearValidate()
+})
+
+watch(() => userStore.user, (user) => {
+  if (user) syncContactFromUser({ onlyName: !contactFieldsVisible.value })
+})
+
+const currentDateTimeValue = () => {
+  const now = new Date()
+  const offsetMs = now.getTimezoneOffset() * 60 * 1000
+  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 19)
+}
+
+const enforceLoginForCurrentFlow = () => {
+  if (isLost.value && !userStore.isAuthenticated) {
+    userStore.loginWithCasdoor(`/#${route.fullPath}`)
+  }
+}
+
+const handleLeaveContactChange = (value) => {
+  if (value && !userStore.isAuthenticated) {
+    leaveContact.value = false
+    userStore.loginWithCasdoor(`/#${route.fullPath}`)
+    return
+  }
+  if (value) {
+    syncContactFromUser()
+  } else {
+    clearContactFields({ keepName: Boolean(userStore.user) })
+  }
+  formRef.value?.clearValidate(['contact_person', 'contact_phone', 'contact_email'])
+}
+
+const syncContactFromUser = ({ onlyName = false } = {}) => {
+  formData.contact_person = formData.contact_person || userStore.user?.name || userStore.user?.student_id || ''
+  if (onlyName) return
+  formData.contact_phone = formData.contact_phone || userStore.user?.phone || ''
+  formData.contact_qq = formData.contact_qq || userStore.user?.qq || ''
+  formData.contact_email = formData.contact_email || userStore.user?.email || ''
+}
+
+const clearContactFields = ({ keepName = false } = {}) => {
+  if (!keepName) formData.contact_person = ''
+  formData.contact_phone = ''
+  formData.contact_qq = ''
+  formData.contact_email = ''
+}
+
+const fillFromProfile = (targetField, userField) => {
+  const value = userStore.user?.[userField]
+  if (!value) {
+    ElMessage.warning('个人信息中没有可自动填写的内容')
+    return
+  }
+  formData[targetField] = value
+  ElMessage.success('已自动填写')
+}
+
+const formatApiError = (error, fallback = '未知错误') => {
+  const detail = error?.response?.data?.detail
+  if (!detail) return fallback
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map(item => {
+        const field = Array.isArray(item.loc) ? item.loc.filter(part => part !== 'body').join('.') : ''
+        return field ? `${field}: ${item.msg}` : item.msg
+      })
+      .filter(Boolean)
+      .join('；') || fallback
+  }
+  if (typeof detail === 'object') {
+    return detail.msg || detail.message || JSON.stringify(detail)
+  }
+  return String(detail)
+}
 
 const validateStep = async () => {
   const fields = stepFields[currentStep.value]
@@ -320,6 +516,8 @@ const fieldStepMap = {
   description: 1,
   contact_person: 2,
   contact_phone: 2,
+  contact_email: 2,
+  storage_location: 1,
 }
 
 const beforeUpload = (file) => {
@@ -355,6 +553,14 @@ const handleRemove = (file) => {
 }
 
 const submitForm = async () => {
+  if (isLost.value && !userStore.isAuthenticated) {
+    userStore.loginWithCasdoor(`/#${route.fullPath}`)
+    return
+  }
+  if (isFound.value && leaveContact.value && !userStore.isAuthenticated) {
+    userStore.loginWithCasdoor(`/#${route.fullPath}`)
+    return
+  }
   try {
     await formRef.value.validate()
   } catch (err) {
@@ -366,6 +572,16 @@ const submitForm = async () => {
       }
     }
     ElMessage.warning('请完善必填信息后提交')
+    return
+  }
+  if (isContactRequired() && !formData.contact_phone && !formData.contact_qq && !formData.contact_email) {
+    currentStep.value = 2
+    ElMessage.warning('请至少填写手机号、QQ 或邮箱中的一种联系方式')
+    return
+  }
+
+  if (isFound.value && !leaveContact.value) {
+    confirmSubmit()
     return
   }
 
@@ -390,6 +606,18 @@ const getPayload = () => {
       payload[key] = value
     }
   }
+  payload.status = 'active'
+  if (payload.direction === 'lost') {
+    payload.contact_visibility = 'logged_in'
+  } else if (payload.direction === 'found' && leaveContact.value) {
+    payload.contact_visibility = 'claimed'
+  } else if (payload.direction === 'found') {
+    payload.contact_visibility = 'private'
+    payload.contact_person = '匿名'
+    delete payload.contact_phone
+    delete payload.contact_qq
+    delete payload.contact_email
+  }
   return payload
 }
 
@@ -403,7 +631,7 @@ const confirmSubmit = async () => {
       router.push({ name: 'detail', params: { id: res.data.id } })
     }
   } catch (e) {
-    ElMessage.error('发布失败：' + (e.response?.data?.detail || '未知错误'))
+    ElMessage.error('发布失败：' + formatApiError(e))
   } finally {
     finalSubmitting.value = false
   }
@@ -558,6 +786,14 @@ const confirmSubmit = async () => {
   margin-top: 8px;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.anonymous-note {
+  margin: 14px 0;
+}
+
+:deep(.el-input-group__append .el-button) {
+  min-width: 72px;
 }
 
 .upload-trigger {

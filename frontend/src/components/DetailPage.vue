@@ -142,6 +142,10 @@
                   <span>QQ</span>
                   <strong>{{ item.contact_qq }}</strong>
                 </div>
+                <div v-if="item.contact_email" class="contact-row">
+                  <span>邮箱</span>
+                  <strong>{{ item.contact_email }}</strong>
+                </div>
               </div>
               <div v-else class="contact-locked">
                 {{ contactLockedText }}
@@ -269,6 +273,11 @@ const hasClaimAccess = computed(() => {
   return myClaims.value.some(claim => claim.item_id === item.value.id)
 })
 
+const isAnonymousFoundItem = computed(() => {
+  if (!item.value) return false
+  return item.value.direction === 'found' && !item.value.user_id && item.value.contact_visibility === 'private'
+})
+
 const canViewContact = computed(() => {
   if (!item.value) return false
   if (canManageItem.value || hasClaimAccess.value) return true
@@ -285,6 +294,7 @@ const claimDialogNote = computed(() => (
     : '请填写您的联系方式和拾获信息。提交后系统会通知失主，由失主与您线下核验。'
 ))
 const contactLockedText = computed(() => {
+  if (isAnonymousFoundItem.value) return '匿名用户发布'
   if (!userStore.isAuthenticated) return '登录后可申请查看联系方式'
   return item.value?.direction === 'found' ? '请先认领后获取联系方式' : '请先提交联系申请'
 })

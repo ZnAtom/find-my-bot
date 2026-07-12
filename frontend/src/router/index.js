@@ -11,7 +11,7 @@ const routes = [
   { path: '/', name: 'home', component: HomePage, meta: { public: true } },
   { path: '/lost', name: 'lost', component: LostListPage, meta: { public: true } },
   { path: '/lost/:id', name: 'detail', component: DetailPage, meta: { public: true } },
-  { path: '/create', name: 'create', component: CreatePage, meta: { requiresAuth: true } },
+  { path: '/create', name: 'create', component: CreatePage, meta: { public: true } },
   { path: '/profile', name: 'profile', component: ProfilePage, meta: { requiresAuth: true } },
   { path: '/admin', name: 'admin', component: AdminPage, meta: { requiresAuth: true, requiresAdmin: true } },
 ]

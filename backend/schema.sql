@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS lost_items (
     contact_person VARCHAR(100),
     contact_phone VARCHAR(20),
     contact_qq VARCHAR(20),
+    contact_email VARCHAR(100),
     user_id INTEGER REFERENCES users(id),
     vector VECTOR(1536),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -74,6 +75,15 @@ CREATE TABLE IF NOT EXISTS match_records (
     match_status VARCHAR(20) DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 兼容已存在的旧表：CREATE TABLE IF NOT EXISTS 不会为旧表补新增列。
+ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS storage_location VARCHAR(200);
+ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS found_time TIMESTAMP;
+ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS direction VARCHAR(20) NOT NULL DEFAULT 'lost';
+ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active';
+ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS contact_visibility VARCHAR(20) NOT NULL DEFAULT 'private';
+ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS contact_email VARCHAR(100);
+ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
 -- 开启 HNSW 高维向量索引，加速匹配效率（1536 维 < pgvector HNSW 上限 2000）
 CREATE INDEX IF NOT EXISTS idx_lost_items_vector ON lost_items USING hnsw (vector vector_cosine_ops);
