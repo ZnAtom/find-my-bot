@@ -23,11 +23,78 @@
   --card-border: #dfe7f1;
   --card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   --card-hover-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --bg-gradient-start: rgba(37, 99, 235, 0.06);
+  --bg-gradient-end: rgba(37, 99, 235, 0);
+  --header-bg: rgba(255, 255, 255, 0.92);
+  --header-border: rgba(223, 231, 241, 0.9);
+  --accent-soft: rgba(37, 99, 235, 0.1);
+  --accent-soft-hover: rgba(37, 99, 235, 0.08);
+  --accent-soft-border: rgba(37, 99, 235, 0.16);
+  --lost-chip-text: #991b1b;
+  --lost-chip-bg: #fee2e2;
+  --found-chip-text: #0f766e;
+  --found-chip-bg: #ccfbf1;
+  --recovered-chip-text: #334155;
+  --recovered-chip-bg: #e2e8f0;
+  --expired-chip-text: #854d0e;
+  --expired-chip-bg: #fef3c7;
+  --image-frame-bg: #eef3f9;
+  --placeholder-icon-color: #94a3b8;
+  --mark-text: #8a5a00;
+  --mark-bg: #fef3c7;
+  --media-bg: #0f172a;
   --font-family: 'Inter', 'Noto Sans SC', 'Source Han Sans SC', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --header-height: 68px;
   --border-radius-lg: 8px;
   --border-radius-md: 6px;
   --page-max-width: 1240px;
+  color-scheme: light;
+}
+
+html.dark {
+  --foundit-blue: #60a5fa;
+  --foundit-blue-strong: #93c5fd;
+  --foundit-teal: #2dd4bf;
+  --foundit-navy: #e5edf7;
+  --foundit-ink: #f8fafc;
+  --cloud-gray: #111827;
+  --bg-primary: #0b101a;
+  --bg-secondary: #111827;
+  --surface-color: #151c2b;
+  --surface-muted: #1b2536;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+  --border-color: #2d3a4f;
+  --border-strong: #475569;
+  --success-color: #2dd4bf;
+  --warning-color: #fbbf24;
+  --danger-color: #f87171;
+  --card-bg: #151c2b;
+  --card-border: #2d3a4f;
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --card-hover-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+  --bg-gradient-start: rgba(96, 165, 250, 0.12);
+  --bg-gradient-end: rgba(96, 165, 250, 0);
+  --header-bg: rgba(15, 23, 42, 0.9);
+  --header-border: rgba(71, 85, 105, 0.62);
+  --accent-soft: rgba(96, 165, 250, 0.18);
+  --accent-soft-hover: rgba(96, 165, 250, 0.16);
+  --accent-soft-border: rgba(96, 165, 250, 0.28);
+  --lost-chip-text: #fecaca;
+  --lost-chip-bg: rgba(248, 113, 113, 0.18);
+  --found-chip-text: #99f6e4;
+  --found-chip-bg: rgba(45, 212, 191, 0.16);
+  --recovered-chip-text: #cbd5e1;
+  --recovered-chip-bg: rgba(148, 163, 184, 0.18);
+  --expired-chip-text: #fde68a;
+  --expired-chip-bg: rgba(251, 191, 36, 0.18);
+  --image-frame-bg: #111827;
+  --placeholder-icon-color: #94a3b8;
+  --mark-text: #fde68a;
+  --mark-bg: rgba(251, 191, 36, 0.22);
+  --media-bg: #050816;
+  color-scheme: dark;
 }
 
 * {
@@ -46,7 +113,7 @@ body {
   font-family: var(--font-family);
   color: var(--text-primary);
   background:
-    linear-gradient(180deg, rgba(37, 99, 235, 0.06), rgba(37, 99, 235, 0) 260px),
+    linear-gradient(180deg, var(--bg-gradient-start), var(--bg-gradient-end) 260px),
     var(--bg-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -64,6 +131,10 @@ a {
   text-decoration: none;
 }
 
+html.dark .brand-logo {
+  filter: brightness(0) invert(1);
+}
+
 #app {
   width: 100%;
   min-height: 100vh;
@@ -76,6 +147,22 @@ a {
   --el-color-danger: var(--danger-color) !important;
   --el-border-radius-base: 6px !important;
   --el-font-family: var(--font-family) !important;
+}
+
+html.dark {
+  --el-bg-color: var(--surface-color);
+  --el-bg-color-page: var(--bg-primary);
+  --el-bg-color-overlay: var(--surface-muted);
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-secondary);
+  --el-text-color-secondary: var(--text-tertiary);
+  --el-border-color: var(--border-color);
+  --el-border-color-light: var(--border-color);
+  --el-border-color-lighter: var(--border-color);
+  --el-fill-color-blank: var(--surface-color);
+  --el-fill-color-light: var(--surface-muted);
+  --el-fill-color-lighter: var(--surface-muted);
+  --el-mask-color: rgba(0, 0, 0, 0.58);
 }
 
 .el-button {
@@ -106,6 +193,7 @@ a {
 .el-textarea__inner,
 .el-select__wrapper {
   border-radius: var(--border-radius-md) !important;
+  background-color: var(--surface-color);
   box-shadow: 0 0 0 1px var(--border-color) inset !important;
 }
 
@@ -116,11 +204,21 @@ a {
 
 .el-table {
   --el-table-border-color: var(--border-color);
-  --el-table-header-bg-color: #f8fafc;
+  --el-table-bg-color: var(--surface-color);
+  --el-table-tr-bg-color: var(--surface-color);
+  --el-table-header-bg-color: var(--surface-muted);
+  --el-table-row-hover-bg-color: var(--surface-muted);
+  --el-table-expanded-cell-bg-color: var(--surface-color);
   --el-table-header-text-color: var(--text-secondary);
   color: var(--text-primary);
   border-radius: var(--border-radius-lg);
   overflow: hidden;
+}
+
+.el-segmented {
+  --el-segmented-bg-color: var(--surface-muted);
+  --el-segmented-item-selected-bg-color: var(--surface-color);
+  --el-segmented-item-selected-color: var(--text-primary);
 }
 
 .el-table th.el-table__cell {
@@ -220,23 +318,23 @@ a {
 }
 
 .status-chip.lost {
-  color: #991b1b;
-  background: #fee2e2;
+  color: var(--lost-chip-text);
+  background: var(--lost-chip-bg);
 }
 
 .status-chip.found {
-  color: #0f766e;
-  background: #ccfbf1;
+  color: var(--found-chip-text);
+  background: var(--found-chip-bg);
 }
 
 .status-chip.recovered {
-  color: #334155;
-  background: #e2e8f0;
+  color: var(--recovered-chip-text);
+  background: var(--recovered-chip-bg);
 }
 
 .status-chip.expired {
-  color: #854d0e;
-  background: #fef3c7;
+  color: var(--expired-chip-text);
+  background: var(--expired-chip-bg);
 }
 
 .type-chip {
@@ -245,7 +343,7 @@ a {
   padding: 4px 8px;
   border-radius: 999px;
   color: var(--foundit-blue);
-  background: rgba(37, 99, 235, 0.1);
+  background: var(--accent-soft);
   font-size: 12px;
   font-weight: 800;
 }
@@ -269,7 +367,7 @@ a {
 .image-frame {
   position: relative;
   overflow: hidden;
-  background: #eef3f9;
+  background: var(--image-frame-bg);
 }
 
 .image-frame img {
@@ -285,10 +383,10 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #94a3b8;
+  color: var(--placeholder-icon-color);
   background:
-    linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(20, 184, 166, 0.08)),
-    #f8fafc;
+    linear-gradient(135deg, var(--accent-soft-hover), rgba(20, 184, 166, 0.08)),
+    var(--surface-muted);
 }
 
 .muted {
@@ -304,8 +402,8 @@ a {
 
 mark.hl {
   padding: 0 2px;
-  color: #8a5a00;
-  background: #fef3c7;
+  color: var(--mark-text);
+  background: var(--mark-bg);
   border-radius: 3px;
 }
 

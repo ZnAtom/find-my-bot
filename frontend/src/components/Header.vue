@@ -71,6 +71,16 @@
           </div>
         </el-popover>
 
+        <button
+          class="theme-toggle-button"
+          type="button"
+          :aria-label="themeToggleLabel"
+          :title="themeToggleLabel"
+          @click="toggleTheme"
+        >
+          <el-icon><component :is="isDarkTheme ? Sunny : Moon" /></el-icon>
+        </button>
+
         <el-dropdown v-if="userStore.isAuthenticated" trigger="click">
           <button class="account-button" type="button">
             <span class="avatar-dot">{{ userInitial }}</span>
@@ -173,14 +183,17 @@ import {
   Bell,
   HomeFilled,
   Menu,
+  Moon,
   Plus,
   Setting,
+  Sunny,
   Switch,
   SwitchButton,
   User,
 } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user'
 import { notificationsApi } from '../api'
+import { theme, toggleTheme } from '../theme'
 import logoUrl from '../assets/foundit-logo.svg'
 import symbolUrl from '../assets/foundit-symbol.svg'
 
@@ -206,6 +219,8 @@ const baseItems = computed(() => [
 
 const desktopItems = computed(() => baseItems.value)
 const mobileItems = computed(() => baseItems.value)
+const isDarkTheme = computed(() => theme.value === 'dark')
+const themeToggleLabel = computed(() => isDarkTheme.value ? '切换到亮色模式' : '切换到黑暗模式')
 
 const userInitial = computed(() => {
   const name = userStore.user?.name || userStore.user?.student_id || 'F'
@@ -299,8 +314,8 @@ onMounted(loadUnreadCount)
   z-index: 100;
   height: var(--header-height);
   padding: 0;
-  border-bottom: 1px solid rgba(223, 231, 241, 0.9);
-  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid var(--header-border);
+  background: var(--header-bg);
   backdrop-filter: blur(16px);
 }
 
@@ -356,8 +371,8 @@ onMounted(loadUnreadCount)
 .nav-link:hover,
 .nav-link.active {
   color: var(--foundit-blue);
-  background: rgba(37, 99, 235, 0.08);
-  border-color: rgba(37, 99, 235, 0.12);
+  background: var(--accent-soft-hover);
+  border-color: var(--accent-soft-border);
 }
 
 .header-actions {
@@ -402,7 +417,8 @@ onMounted(loadUnreadCount)
   font-weight: 700;
 }
 
-.notification-button {
+.notification-button,
+.theme-toggle-button {
   width: 38px;
   height: 38px;
   display: inline-flex;
@@ -415,10 +431,11 @@ onMounted(loadUnreadCount)
   cursor: pointer;
 }
 
-.notification-button:hover {
+.notification-button:hover,
+.theme-toggle-button:hover {
   color: var(--foundit-blue);
-  border-color: rgba(37, 99, 235, 0.22);
-  background: rgba(37, 99, 235, 0.08);
+  border-color: var(--accent-soft-border);
+  background: var(--accent-soft-hover);
 }
 
 .notification-panel {
@@ -541,8 +558,8 @@ onMounted(loadUnreadCount)
 
 .drawer-link.active {
   color: var(--foundit-blue);
-  background: rgba(37, 99, 235, 0.08);
-  border-color: rgba(37, 99, 235, 0.16);
+  background: var(--accent-soft-hover);
+  border-color: var(--accent-soft-border);
 }
 
 .drawer-footer {

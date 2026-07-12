@@ -448,8 +448,8 @@ const confirmSubmit = async () => {
 
 .step-row.active {
   color: var(--text-primary);
-  background: rgba(37, 99, 235, 0.08);
-  border-color: rgba(37, 99, 235, 0.18);
+  background: var(--accent-soft-hover);
+  border-color: var(--accent-soft-border);
 }
 
 .step-row.done .step-index {
@@ -528,8 +528,8 @@ const confirmSubmit = async () => {
 
 .post-type-grid :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
   color: var(--foundit-blue);
-  background: rgba(37, 99, 235, 0.08);
-  border-color: rgba(37, 99, 235, 0.5) !important;
+  background: var(--accent-soft-hover);
+  border-color: var(--accent-soft-border) !important;
 }
 
 .post-type-card {

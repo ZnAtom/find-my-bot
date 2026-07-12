@@ -441,7 +441,7 @@ const formatDate = (dateStr) => {
 const simColor = (score) => {
   if (score >= 0.8) return 'var(--success-color)'
   if (score >= 0.5) return 'var(--warning-color)'
-  return '#94a3b8'
+  return 'var(--placeholder-icon-color)'
 }
 
 const getDirectionText = (direction) => direction === 'found' ? '招领' : '寻物'
@@ -481,7 +481,7 @@ const getStatusText = (row) => {
 
 .main-image {
   height: 520px;
-  background: #0f172a;
+  background: var(--media-bg);
 }
 
 .main-image-content {

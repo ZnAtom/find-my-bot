@@ -246,18 +246,18 @@ const formatDate = (dateStr) => {
 }
 
 .action-card.lost .el-icon {
-  color: #991b1b;
-  background: #fee2e2;
+  color: var(--lost-chip-text);
+  background: var(--lost-chip-bg);
 }
 
 .action-card.found .el-icon {
-  color: #0f766e;
-  background: #ccfbf1;
+  color: var(--found-chip-text);
+  background: var(--found-chip-bg);
 }
 
 .action-card.neutral .el-icon {
   color: var(--foundit-blue);
-  background: rgba(37, 99, 235, 0.1);
+  background: var(--accent-soft);
 }
 
 .action-card strong,
@@ -333,7 +333,7 @@ const formatDate = (dateStr) => {
   overflow: hidden;
   border-radius: var(--border-radius-md);
   background: var(--surface-muted);
-  color: #94a3b8;
+  color: var(--placeholder-icon-color);
 }
 
 .thumb img {

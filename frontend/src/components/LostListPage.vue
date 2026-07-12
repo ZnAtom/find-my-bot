@@ -306,7 +306,7 @@ const escapeHtml = (str) => {
 const simColor = (score) => {
   if (score >= 0.8) return 'var(--success-color)'
   if (score >= 0.5) return 'var(--warning-color)'
-  return '#94a3b8'
+  return 'var(--placeholder-icon-color)'
 }
 
 const handlePageChange = (nextPage) => {

@@ -607,7 +607,7 @@ const getStatusText = (row) => {
   flex: 0 0 auto;
   border-radius: var(--border-radius-md);
   overflow: hidden;
-  color: #94a3b8;
+  color: var(--placeholder-icon-color);
   background: var(--surface-muted);
 }
 
