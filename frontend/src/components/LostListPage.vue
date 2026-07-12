@@ -46,7 +46,7 @@
           </div>
           <div class="filter-block">
             <span>分类</span>
-            <el-select v-model="filterType" placeholder="全部分类" clearable @change="handleFilterChange">
+            <el-select v-model="filterType" placeholder="全部分类" clearable @change="handleFilterChange" style="width: 110px">
               <el-option v-for="type in itemTypes" :key="type" :label="type" :value="type" />
             </el-select>
           </div>
@@ -59,10 +59,6 @@
           <span>条结果</span>
           <span v-if="searchQuery">，关键词为“{{ searchQuery }}”</span>
         </div>
-        <el-tag v-if="searchMode === 'semantic'" effect="light" round>
-          <el-icon><MagicStick /></el-icon>
-          语义搜索
-        </el-tag>
         <el-button text @click="resetSearch">清除条件</el-button>
       </div>
 
@@ -127,7 +123,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Search, MagicStick, Picture, MapLocation } from '@element-plus/icons-vue'
+import { Search, Picture, MapLocation } from '@element-plus/icons-vue'
 import { lostItemsApi, resolveImageUrl } from '../api'
 
 const searchQuery = ref('')
@@ -200,7 +196,7 @@ const loadItems = async () => {
 }
 
 const handleSearch = async () => {
-  if (!searchQuery.value.trim() && !filterType.value && !filterStatus.value && !filterDirection.value) {
+  if (!searchQuery.value.trim()) {
     page.value = 1
     loadItems()
     return
