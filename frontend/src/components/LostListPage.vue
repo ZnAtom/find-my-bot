@@ -128,9 +128,9 @@ import { lostItemsApi, resolveImageUrl } from '../api'
 
 const searchQuery = ref('')
 const filterType = ref('')
-const filterStatus = ref('')
+const filterStatus = ref('active')
 const filterDirection = ref('')
-const searchMode = ref('keyword')
+const searchMode = ref('semantic')
 const items = ref([])
 const allKeywordResults = ref([])
 const page = ref(1)
@@ -242,7 +242,7 @@ const applyKeywordPage = () => {
 }
 
 const handleFilterChange = () => {
-  if (searchQuery.value.trim() || filterType.value || filterStatus.value || filterDirection.value) {
+  if (searchQuery.value.trim()) {
     handleSearch()
   } else {
     page.value = 1
@@ -253,9 +253,9 @@ const handleFilterChange = () => {
 const resetSearch = () => {
   searchQuery.value = ''
   filterType.value = ''
-  filterStatus.value = ''
+  filterStatus.value = 'active'
   filterDirection.value = ''
-  searchMode.value = 'keyword'
+  searchMode.value = 'semantic'
   page.value = 1
   loadItems()
 }
