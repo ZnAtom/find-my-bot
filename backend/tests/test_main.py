@@ -19,9 +19,19 @@ def test_api_lost_items_no_auth(mock_db):
     assert response.status_code in [200, 401]
 
 @patch("app.get_db_connection")
-def test_upload_no_auth(mock_db):
+def test_upload_without_trusted_origin_is_forbidden(mock_db):
     response = client.post(
         "/api/upload",
         files={"file": ("test.jpg", b"dummy content", "image/jpeg")}
     )
-    assert response.status_code == 401
+    assert response.status_code == 403
+
+@patch("app.get_db_connection")
+def test_upload_allows_anonymous_with_trusted_origin(mock_db):
+    response = client.post(
+        "/api/upload",
+        headers={"Origin": "http://localhost:5173"},
+        files={"file": ("test.jpg", b"dummy content", "image/jpeg")}
+    )
+    assert response.status_code == 200
+    assert response.json()["url"].startswith("/uploads/")
