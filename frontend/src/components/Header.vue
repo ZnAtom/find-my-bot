@@ -121,10 +121,10 @@
     >
       <div class="drawer-shell">
         <div class="drawer-brand">
-          <img :src="symbolUrl" alt="" />
+          <div class="drawer-avatar">{{ userInitial }}</div>
           <div>
-            <strong>FoundIt</strong>
-            <span>{{ userStore.isAuthenticated ? '已登录' : '未登录' }}</span>
+            <strong>{{ userStore.user?.name || userStore.user?.student_id || '未登录' }}</strong>
+            <span>{{ userStore.isAuthenticated ? userStore.user?.student_id || '已登录' : '登录后管理发布和通知' }}</span>
           </div>
         </div>
 
@@ -195,7 +195,6 @@ import { useUserStore } from '../stores/user'
 import { notificationsApi } from '../api'
 import { theme, toggleTheme } from '../theme'
 import logoUrl from '../assets/foundit-logo.svg'
-import symbolUrl from '../assets/foundit-symbol.svg'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -519,13 +518,22 @@ onMounted(loadUnreadCount)
   margin-bottom: 18px;
 }
 
-.drawer-brand img {
+.drawer-avatar {
   width: 44px;
   height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--foundit-blue), var(--foundit-teal));
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
 }
 
 .drawer-brand strong,
-.drawer-brand span {
+.drawer-brand > div > span {
   display: block;
 }
 
@@ -533,7 +541,7 @@ onMounted(loadUnreadCount)
   font-size: 18px;
 }
 
-.drawer-brand span {
+.drawer-brand > div > span {
   margin-top: 2px;
   color: var(--text-secondary);
   font-size: 13px;
