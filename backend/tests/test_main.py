@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from app import app
 
 client = TestClient(app)
+IMAGE_ANALYSIS_TEST_IMAGE_URL = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg"
 
 def test_read_main():
     response = client.get("/docs")
@@ -46,7 +47,7 @@ def test_campus_map_tile_rejects_out_of_range_zoom():
 def test_image_analysis_without_trusted_origin_is_forbidden(mock_db):
     response = client.post(
         "/api/image-analysis",
-        json={"image_urls": ["/uploads/test.jpg"]}
+        json={"image_urls": [IMAGE_ANALYSIS_TEST_IMAGE_URL]}
     )
     assert response.status_code == 403
 
@@ -56,6 +57,6 @@ def test_image_analysis_allows_trusted_origin_without_auth(mock_db):
     response = client.post(
         "/api/image-analysis",
         headers={"Origin": "http://localhost:5173"},
-        json={"image_urls": ["/uploads/test.jpg"]}
+        json={"image_urls": [IMAGE_ANALYSIS_TEST_IMAGE_URL]}
     )
     assert response.status_code in [502, 503]

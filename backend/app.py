@@ -386,6 +386,17 @@ def _image_to_data_url(path: str) -> str:
     return f"data:{mime_type};base64,{image_base64}"
 
 
+def _is_remote_image_url(url: str) -> bool:
+    parsed = urlparse(url.strip())
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
+def _image_ref_to_school_url(image_ref: str) -> str:
+    if _is_remote_image_url(image_ref):
+        return image_ref.strip()
+    return _image_to_data_url(image_ref)
+
+
 def _message_content_to_text(content) -> str:
     if isinstance(content, str):
         return content
@@ -442,13 +453,13 @@ def _clean_analysis_result(data: dict) -> ImageAnalysisResponse:
     )
 
 
-async def _call_school_image_analysis(image_paths: list[str]) -> ImageAnalysisResponse:
+async def _call_school_image_analysis(image_refs: list[str]) -> ImageAnalysisResponse:
     if not SCHOOL_API_KEY:
         raise HTTPException(status_code=503, detail="图片识别服务未配置")
 
     content = [{"type": "text", "text": IMAGE_ANALYSIS_PROMPT}]
-    for path in image_paths:
-        content.append({"type": "image_url", "image_url": {"url": _image_to_data_url(path)}})
+    for image_ref in image_refs:
+        content.append({"type": "image_url", "image_url": {"url": _image_ref_to_school_url(image_ref)}})
 
     payload = {
         "stream": False,
@@ -495,14 +506,19 @@ async def analyze_uploaded_images(payload: ImageAnalysisRequest, request: Reques
     if len(image_urls) > VISION_MAX_IMAGES:
         raise HTTPException(status_code=400, detail=f"单次最多分析 {VISION_MAX_IMAGES} 张图片")
 
-    image_paths = []
+    image_refs = []
     for image_url in image_urls:
+        image_url = image_url.strip()
+        if _is_remote_image_url(image_url):
+            image_refs.append(image_url)
+            continue
+
         path = _image_url_to_path(image_url)
         if not path:
             raise HTTPException(status_code=400, detail="图片不存在或路径无效")
-        image_paths.append(path)
+        image_refs.append(path)
 
-    return await _call_school_image_analysis(image_paths)
+    return await _call_school_image_analysis(image_refs)
 
 
 @lru_cache(maxsize=128)
