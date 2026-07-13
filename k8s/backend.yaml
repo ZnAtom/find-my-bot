@@ -63,6 +63,15 @@ spec:
               value: "foundit-db"
             - name: HF_ENDPOINT
               value: "https://hf-mirror.com"
+            - name: SCHOOL_API_URL
+              value: "https://genaiapi.shanghaitech.edu.cn/api/v1/start"
+            - name: SCHOOL_VISION_MODEL
+              value: "qwen-instruct"
+            - name: SCHOOL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: foundit-genai
+                  key: school_api_key
             - name: HF_HOME
               value: "/root/.cache/huggingface"
             - name: CASDOOR_ENDPOINT

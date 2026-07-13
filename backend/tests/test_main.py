@@ -40,3 +40,22 @@ def test_upload_allows_anonymous_with_trusted_origin(mock_db):
 def test_campus_map_tile_rejects_out_of_range_zoom():
     response = client.get("/api/campus-map/tiles/16/tile1_1.png")
     assert response.status_code == 404
+
+
+@patch("app.get_db_connection")
+def test_image_analysis_without_trusted_origin_is_forbidden(mock_db):
+    response = client.post(
+        "/api/image-analysis",
+        json={"image_urls": ["/uploads/test.jpg"]}
+    )
+    assert response.status_code == 403
+
+
+@patch("app.get_db_connection")
+def test_image_analysis_allows_trusted_origin_without_auth(mock_db):
+    response = client.post(
+        "/api/image-analysis",
+        headers={"Origin": "http://localhost:5173"},
+        json={"image_urls": ["/uploads/test.jpg"]}
+    )
+    assert response.status_code in [502, 503]

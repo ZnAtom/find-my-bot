@@ -2,14 +2,18 @@ from fastapi import FastAPI, HTTPException, Query, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 import httpx
+import base64
+import json
+import mimetypes
 import psycopg2
 import psycopg2.extras
 import os
 import uuid
 import aiofiles
+import httpx
 from functools import lru_cache
 from urllib.parse import unquote, urlparse
 from auth import (
@@ -116,6 +120,38 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+SCHOOL_API_URL = os.environ.get("SCHOOL_API_URL", "https://genaiapi.shanghaitech.edu.cn/api/v1/start")
+SCHOOL_API_KEY = os.environ.get("SCHOOL_API_KEY")
+SCHOOL_VISION_MODEL = os.environ.get("SCHOOL_VISION_MODEL", os.environ.get("SCHOOL_MODEL", "qwen-instruct"))
+VISION_MAX_IMAGES = int(os.environ.get("VISION_MAX_IMAGES", "10"))
+VISION_TIMEOUT_SECONDS = float(os.environ.get("VISION_TIMEOUT_SECONDS", "60"))
+
+ITEM_TYPE_OPTIONS = {"证件卡片", "电子产品", "衣物鞋帽", "学习用品", "钱包钥匙", "其他"}
+
+IMAGE_ANALYSIS_PROMPT = """你是“校园失物招领图片信息提取器”。
+
+任务：
+根据用户上传的图片，提取可直接用于发布失物招领记录的物品字段。
+只关注物品本身，不提取地点、时间、联系人、手机号、QQ、学号、证件号等信息。
+只输出严格 JSON，不要解释，不要 Markdown，不要多余文本。
+
+规则：
+1. 只根据图片中明确可见的信息填写，不要猜测。
+2. 多张图一起分析，合并重复信息。
+3. 物品名称要短而具体，优先包含颜色、品牌或类型，例如“黑色双肩包”“校园一卡通”“AirPods Pro 耳机”。
+4. 物品分类只能从以下 6 类里选最接近的一项：证件卡片、电子产品、衣物鞋帽、学习用品、钱包钥匙、其他。
+5. 描述要简短但完整，包含颜色、品牌、外观、数量、材质、特殊标记、包装或配件等可见特征。
+6. 如果图片里出现姓名，只允许用“姓+同学”的形式描述，例如“卡面疑似有王同学姓名”；不要输出完整姓名。
+7. 不要输出手机号、QQ、学号、证件号、身份证号、条形码/二维码内容、邮箱等敏感信息。
+8. 不确定的字段返回空字符串；注意事项放入 notes。
+
+输出格式：
+{
+  "item_name": "",
+  "item_type": "",
+  "description": "",
+  "notes": []
+}"""
 
 # 挂载上传目录为静态文件服务
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
@@ -268,6 +304,17 @@ class ProfileUpdate(BaseModel):
     email: Optional[str] = None
 
 
+class ImageAnalysisRequest(BaseModel):
+    image_urls: List[str] = Field(default_factory=list)
+
+
+class ImageAnalysisResponse(BaseModel):
+    item_name: str = ""
+    item_type: str = ""
+    description: str = ""
+    notes: List[str] = Field(default_factory=list)
+
+
 
 # 数据库向量列维度（需与 pgvector column 定义一致）
 VECTOR_DIM = int(os.environ.get("VECTOR_DIM", "1536"))
@@ -326,6 +373,136 @@ def _iter_image_paths(image_url: Optional[str]) -> list[str]:
         if path:
             paths.append(path)
     return paths
+
+
+def _image_to_data_url(path: str) -> str:
+    size = os.path.getsize(path)
+    if size > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="单张图片超过学校图像理解接口 10MB 限制")
+
+    mime_type = mimetypes.guess_type(path)[0] or "image/jpeg"
+    with open(path, "rb") as image_file:
+        image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
+    return f"data:{mime_type};base64,{image_base64}"
+
+
+def _message_content_to_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                parts.append(str(item.get("text", "")))
+            elif isinstance(item, str):
+                parts.append(item)
+        return "\n".join(part for part in parts if part)
+    return str(content or "")
+
+
+def _parse_json_object(text: str) -> dict:
+    if not text:
+        raise ValueError("empty response")
+
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    start = text.find("{")
+    if start == -1:
+        raise ValueError("response does not contain a JSON object")
+
+    decoder = json.JSONDecoder()
+    parsed, _ = decoder.raw_decode(text[start:])
+    if not isinstance(parsed, dict):
+        raise ValueError("response JSON is not an object")
+    return parsed
+
+
+def _clean_analysis_result(data: dict) -> ImageAnalysisResponse:
+    item_name = str(data.get("item_name") or "").strip()
+    item_type = str(data.get("item_type") or "").strip()
+    description = str(data.get("description") or "").strip()
+    notes = data.get("notes") or []
+
+    if item_type and item_type not in ITEM_TYPE_OPTIONS:
+        item_type = "其他"
+
+    if not isinstance(notes, list):
+        notes = [str(notes)]
+
+    return ImageAnalysisResponse(
+        item_name=item_name[:80],
+        item_type=item_type,
+        description=description[:600],
+        notes=[str(note).strip()[:120] for note in notes if str(note).strip()][:5],
+    )
+
+
+async def _call_school_image_analysis(image_paths: list[str]) -> ImageAnalysisResponse:
+    if not SCHOOL_API_KEY:
+        raise HTTPException(status_code=503, detail="图片识别服务未配置")
+
+    content = [{"type": "text", "text": IMAGE_ANALYSIS_PROMPT}]
+    for path in image_paths:
+        content.append({"type": "image_url", "image_url": {"url": _image_to_data_url(path)}})
+
+    payload = {
+        "stream": False,
+        "model": SCHOOL_VISION_MODEL,
+        "messages": [{"role": "user", "content": content}],
+        "temperature": 0.1,
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {SCHOOL_API_KEY}",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=VISION_TIMEOUT_SECONDS) as client:
+            response = await client.post(SCHOOL_API_URL, headers=headers, json=payload)
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="图片识别服务请求超时")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="图片识别服务暂不可用")
+
+    if response.status_code != 200:
+        logging.warning("School image analysis failed: %s %s", response.status_code, response.text[:500])
+        raise HTTPException(status_code=502, detail="图片识别服务暂不可用")
+
+    try:
+        data = response.json()
+        message = data["choices"][0]["message"]
+        content_text = _message_content_to_text(message.get("content"))
+        parsed = _parse_json_object(content_text)
+        return _clean_analysis_result(parsed)
+    except Exception as exc:
+        logging.warning("Image analysis parse failed: %s", exc)
+        raise HTTPException(status_code=502, detail="图片识别结果解析失败，请稍后重试")
+
+
+@app.post("/api/image-analysis", response_model=ImageAnalysisResponse)
+async def analyze_uploaded_images(payload: ImageAnalysisRequest, request: Request):
+    verify_csrf_origin(request)
+
+    image_urls = [url for url in payload.image_urls if url and url.strip()]
+    if not image_urls:
+        raise HTTPException(status_code=400, detail="请先上传图片")
+    if len(image_urls) > VISION_MAX_IMAGES:
+        raise HTTPException(status_code=400, detail=f"单次最多分析 {VISION_MAX_IMAGES} 张图片")
+
+    image_paths = []
+    for image_url in image_urls:
+        path = _image_url_to_path(image_url)
+        if not path:
+            raise HTTPException(status_code=400, detail="图片不存在或路径无效")
+        image_paths.append(path)
+
+    return await _call_school_image_analysis(image_paths)
 
 
 @lru_cache(maxsize=128)

@@ -105,6 +105,7 @@ export const uploadApi = {
     formData.append('file', file)
     return uploadClient.post('/api/upload', formData)
   },
+  analyzeImages: (imageUrls, config = {}) => api.post('/image-analysis', { image_urls: imageUrls }, config),
 }
 
 /**

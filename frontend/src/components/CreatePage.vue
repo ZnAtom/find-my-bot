@@ -132,6 +132,17 @@
                     </div>
                   </el-upload>
                   <div class="field-tip">最多 3 张，单张不超过 5MB。</div>
+                  <div class="image-analysis-actions">
+                    <el-button
+                      round
+                      :disabled="uploadedUrls.length === 0"
+                      :loading="imageAnalyzing"
+                      @click="analyzeUploadedImages"
+                    >
+                      <el-icon><MagicStick /></el-icon>
+                      从图片识别
+                    </el-button>
+                  </div>
                 </el-form-item>
               </div>
 
@@ -294,9 +305,9 @@
 <script setup>
 import { computed, onMounted, ref, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Plus, User, Phone, ChatDotRound, Warning, CircleCheck, Message, MapLocation, Clock, Picture } from '@element-plus/icons-vue'
-import { apiBase, lostItemsApi } from '../api'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, User, Phone, ChatDotRound, Warning, CircleCheck, Message, MapLocation, Clock, Picture, MagicStick } from '@element-plus/icons-vue'
+import { apiBase, lostItemsApi, uploadApi } from '../api'
 import { useUserStore } from '../stores/user'
 import CampusLocationPanel from './CampusLocationPanel.vue'
 
@@ -307,6 +318,7 @@ const formRef = ref(null)
 const currentStep = ref(0)
 const submitting = ref(false)
 const finalSubmitting = ref(false)
+const imageAnalyzing = ref(false)
 const uploadedUrls = ref([])
 const fileList = ref([])
 const uploadAction = computed(() => `${apiBase}/api/upload`)
@@ -622,6 +634,75 @@ const handleRemove = (file) => {
   }
 }
 
+const analysisFields = [
+  { key: 'item_name', label: '物品名称' },
+  { key: 'item_type', label: '物品分类' },
+  { key: 'description', label: '详细特征' },
+]
+
+const applyAnalysisResult = (result, overwrite = false) => {
+  let applied = 0
+  analysisFields.forEach(({ key }) => {
+    const value = String(result?.[key] || '').trim()
+    if (!value) return
+    if (overwrite || !formData[key]) {
+      formData[key] = value
+      applied += 1
+    }
+  })
+
+  if (applied > 0) {
+    formRef.value?.clearValidate(analysisFields.map(field => field.key))
+  }
+  return applied
+}
+
+const analyzeUploadedImages = async () => {
+  if (uploadedUrls.value.length === 0) {
+    ElMessage.warning('请先上传图片')
+    return
+  }
+
+  imageAnalyzing.value = true
+  try {
+    const res = await uploadApi.analyzeImages(uploadedUrls.value, { silent: true })
+    const result = res.data || {}
+    const conflictFields = analysisFields
+      .filter(({ key }) => String(result[key] || '').trim() && formData[key])
+      .map(field => field.label)
+
+    let applied = 0
+    if (conflictFields.length > 0) {
+      try {
+        await ElMessageBox.confirm(
+          `识别结果包含已填写的${conflictFields.join('、')}，是否覆盖？`,
+          '使用图片识别结果',
+          {
+            confirmButtonText: '覆盖',
+            cancelButtonText: '只填空项',
+            type: 'warning',
+          }
+        )
+        applied = applyAnalysisResult(result, true)
+      } catch {
+        applied = applyAnalysisResult(result, false)
+      }
+    } else {
+      applied = applyAnalysisResult(result, false)
+    }
+
+    if (applied > 0) {
+      ElMessage.success('已填入图片识别结果')
+    } else {
+      ElMessage.info('没有可填入的新信息')
+    }
+  } catch (e) {
+    ElMessage.warning(formatApiError(e, '图片识别暂不可用'))
+  } finally {
+    imageAnalyzing.value = false
+  }
+}
+
 const submitForm = async () => {
   if (isLost.value && !userStore.isAuthenticated) {
     userStore.loginWithCasdoor(`/#${route.fullPath}`)
@@ -911,6 +992,10 @@ const confirmSubmit = async () => {
   margin-top: 8px;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.image-analysis-actions {
+  margin-top: 10px;
 }
 
 .record-preview {
