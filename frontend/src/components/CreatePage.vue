@@ -63,7 +63,7 @@
                       @click="analyzeUploadedImages"
                     >
                       <el-icon><MagicStick /></el-icon>
-                      从图片识别
+                      AI智能填信息
                     </el-button>
                   </div>
                 </el-form-item>
