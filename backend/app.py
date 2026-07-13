@@ -1,9 +1,10 @@
 from fastapi import FastAPI, HTTPException, Query, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
+import httpx
 import psycopg2
 import psycopg2.extras
 import os
@@ -45,6 +46,8 @@ CORS_ORIGINS = [
     for origin in os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
     if origin.strip()
 ]
+CAMPUS_MAP_TILE_BASE_URL = os.environ.get("CAMPUS_MAP_TILE_BASE_URL", "https://map.shanghaitech.edu.cn")
+CAMPUS_MAP_TILE_TIMEOUT = float(os.environ.get("CAMPUS_MAP_TILE_TIMEOUT", "6"))
 
 @app.on_event("startup")
 def startup():
@@ -116,6 +119,40 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 # 挂载上传目录为静态文件服务
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+
+@app.get("/api/campus-map/tiles/{zoom}/tile{x}_{y}.png")
+async def proxy_campus_map_tile(zoom: int, x: int, y: int):
+    if zoom < 17 or zoom > 19 or x < 0 or y < 0:
+        raise HTTPException(status_code=404, detail="地图瓦片不存在")
+
+    tile_url = f"{CAMPUS_MAP_TILE_BASE_URL}/tiles/{zoom}/tile{x}_{y}.png"
+    try:
+        async with httpx.AsyncClient(timeout=CAMPUS_MAP_TILE_TIMEOUT) as client:
+            response = await client.get(
+                tile_url,
+                headers={
+                    "Accept": "image/png,image/*;q=0.8,*/*;q=0.5",
+                    "Referer": "https://map.shanghaitech.edu.cn/",
+                    "User-Agent": "FoundIt campus map tile proxy",
+                },
+            )
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="校园地图暂时无法访问")
+
+    if response.status_code == 404:
+        raise HTTPException(status_code=404, detail="地图瓦片不存在")
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail="校园地图暂时无法访问")
+
+    return Response(
+        content=response.content,
+        media_type=response.headers.get("content-type", "image/png"),
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @app.post("/api/upload")

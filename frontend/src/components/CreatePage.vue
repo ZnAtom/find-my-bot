@@ -35,23 +35,26 @@
                   <p>先说明这是一条寻物还是招领记录。</p>
                 </div>
 
-                <el-form-item label="信息类型" prop="direction">
-                  <el-radio-group v-model="formData.direction" class="post-type-grid">
-                    <el-radio-button value="lost">
-                      <div class="post-type-card">
-                        <el-icon><Warning /></el-icon>
-                        <strong>我丢了东西</strong>
-                        <span>发布寻物记录</span>
-                      </div>
-                    </el-radio-button>
-                    <el-radio-button value="found">
-                      <div class="post-type-card">
-                        <el-icon><CircleCheck /></el-icon>
-                        <strong>我捡到东西</strong>
-                        <span>发布招领记录</span>
-                      </div>
-                    </el-radio-button>
-                  </el-radio-group>
+                <el-form-item prop="direction">
+                  <fieldset class="form-fieldset">
+                    <legend>信息类型</legend>
+                    <el-radio-group v-model="formData.direction" class="post-type-grid" aria-label="信息类型">
+                      <el-radio-button value="lost">
+                        <div class="post-type-card">
+                          <el-icon><Warning /></el-icon>
+                          <strong>我丢了东西</strong>
+                          <span>发布寻物记录</span>
+                        </div>
+                      </el-radio-button>
+                      <el-radio-button value="found">
+                        <div class="post-type-card">
+                          <el-icon><CircleCheck /></el-icon>
+                          <strong>我捡到东西</strong>
+                          <span>发布招领记录</span>
+                        </div>
+                      </el-radio-button>
+                    </el-radio-group>
+                  </fieldset>
                 </el-form-item>
 
                 <div class="form-grid">
@@ -841,6 +844,23 @@ const confirmSubmit = async () => {
 
 .location-form-item :deep(.el-form-item__content) {
   width: 100%;
+}
+
+.form-fieldset {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.form-fieldset legend {
+  margin: 0 0 8px;
+  padding: 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .post-type-grid {

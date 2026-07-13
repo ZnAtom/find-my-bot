@@ -14,10 +14,19 @@
 
     <div
       class="map-stage"
-      title="点击地图任意位置，将自动选择附近的校园地点"
-      @click="handleStageClick"
+      :class="{ 'has-official-map': officialMapReady }"
+      :title="mapStageTitle"
+      @click="!officialMapReady && handleStageClick($event)"
     >
+      <div
+        ref="officialMapEl"
+        class="official-map-layer"
+        :class="{ ready: officialMapReady }"
+        aria-label="上海科技大学官方校园地图"
+      />
+
       <svg
+        v-if="!officialMapReady"
         class="map-svg"
         :viewBox="`0 0 ${viewBox.width} ${viewBox.height}`"
         preserveAspectRatio="none"
@@ -108,6 +117,7 @@
       </svg>
 
       <div
+        v-if="!officialMapReady"
         v-for="point in visiblePoints"
         :key="point.entry.id"
         class="map-point"
@@ -126,12 +136,16 @@
           {{ point.entry.label }}
         </span>
       </div>
+
+      <div v-if="officialMapError" class="map-fallback-note">
+        {{ officialMapError }}
+      </div>
     </div>
   </section>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   campusBoundary,
   campusMapViewBox,
@@ -139,10 +153,12 @@ import {
   getCampusBounds,
   getCampusGroupEntries,
   getCampusGroupTheme,
+  findNearestCampusLocation,
   projectCampusBoundary,
   projectCampusPolygon,
   projectCampusPoint,
 } from '../data/campusLocations'
+import { apiBase } from '../api'
 
 const props = defineProps({
   entries: {
@@ -170,12 +186,27 @@ const props = defineProps({
 const emit = defineEmits(['select', 'select-group'])
 
 const viewBox = campusMapViewBox
+const officialMapEl = ref(null)
+const officialMapReady = ref(false)
+const officialMapError = ref('')
+const officialMapInstance = ref(null)
+const officialMapOverlays = ref([])
+const isTestMode = import.meta.env.MODE === 'test'
+const OFFICIAL_MAP_AK = 'H8S40o4ZdE6hN4W4ESYvCgRY'
+const OFFICIAL_TILE_ROOT = `${apiBase}/api/campus-map`
+const OFFICIAL_CENTER = { lng: 121.601268, lat: 31.18331 }
+const OFFICIAL_ZOOM = 18
+let baiduMapPromise = null
 
 const mapBounds = computed(() => getCampusBounds(props.entries, campusBoundary))
 
 const boundaryPoints = computed(() => projectCampusBoundary(campusBoundary, mapBounds.value, viewBox))
 
 const highlightIdSet = computed(() => new Set(props.highlightedIds))
+
+const mapStageTitle = computed(() => officialMapReady.value
+  ? '点击地图上的建筑轮廓、标记或者空白区域，将自动选择附近的校园地点'
+  : '点击地图任意位置，将自动选择附近的校园地点')
 
 const campusRoads = computed(() => [
   {
@@ -291,6 +322,24 @@ const selectedLabel = computed(() => {
   return entry?.pathLabel || '已选择地点'
 })
 
+onMounted(async () => {
+  if (isTestMode) return
+  await initOfficialMap()
+})
+
+onBeforeUnmount(() => {
+  disposeOfficialMap()
+})
+
+watch(
+  () => [props.entries, props.selectedId, props.activeGroupId, props.highlightedIds],
+  () => {
+    if (!officialMapReady.value) return
+    refreshOfficialMapOverlays()
+  },
+  { deep: true },
+)
+
 function emitSelect(entry) {
   emit('select', entry)
 }
@@ -301,6 +350,14 @@ function emitGroup(groupId) {
 
 function handleStageClick(event) {
   selectNearestFromEvent(event)
+}
+
+function handleOfficialMapClick(event) {
+  if (!event?.point) return
+  const nearest = findNearestCampusLocation([event.point.lng, event.point.lat])
+  if (nearest?.entry) {
+    emitSelect(nearest.entry)
+  }
 }
 
 function selectNearestFromEvent(event, groupId = '') {
@@ -342,6 +399,170 @@ function getStageClickCandidates(groupId = '') {
 
 function isActiveGroup(groupId) {
   return props.activeGroupId === 'all' || props.activeGroupId === groupId
+}
+
+async function initOfficialMap() {
+  officialMapError.value = ''
+  try {
+    const BMap = await ensureBaiduMap()
+    if (!officialMapEl.value || officialMapInstance.value) return
+
+    const map = new BMap.Map(officialMapEl.value, {
+      enableMapClick: false,
+    })
+    officialMapInstance.value = map
+    map.centerAndZoom(new BMap.Point(OFFICIAL_CENTER.lng, OFFICIAL_CENTER.lat), OFFICIAL_ZOOM)
+    map.setMinZoom(17)
+    map.setMaxZoom(19)
+    map.enableScrollWheelZoom(true)
+    map.enableContinuousZoom?.()
+    map.disableDoubleClickZoom?.()
+
+    const tileLayer = new BMap.TileLayer({
+      transparentPng: true,
+      zIndex: 1000,
+    })
+    tileLayer.getTilesUrl = function getTilesUrl(tileCoord, zoom) {
+      return `${OFFICIAL_TILE_ROOT}/tiles/${zoom}/tile${tileCoord.x}_${tileCoord.y}.png`
+    }
+    map.addTileLayer(tileLayer)
+    map.addEventListener('click', handleOfficialMapClick)
+
+    officialMapReady.value = true
+    refreshOfficialMapOverlays()
+    await nextTick()
+    map.checkResize?.()
+  } catch (error) {
+    officialMapError.value = '官方地图暂时无法加载，可以继续使用下方地点选择。'
+  }
+}
+
+function disposeOfficialMap() {
+  const map = officialMapInstance.value
+  if (!map || typeof window === 'undefined') return
+  try {
+    map.removeEventListener('click', handleOfficialMapClick)
+    clearOfficialMapOverlays()
+    officialMapInstance.value = null
+    officialMapReady.value = false
+  } catch {}
+}
+
+function refreshOfficialMapOverlays() {
+  const map = officialMapInstance.value
+  if (!map || typeof window === 'undefined' || !window.BMap) return
+  clearOfficialMapOverlays()
+
+  const BMap = window.BMap
+  const highlights = new Set(props.highlightedIds)
+  const hasSearchHighlight = highlights.size > 0
+
+  for (const entry of props.entries) {
+    const theme = getCampusGroupTheme(entry.groupId)
+    const isSelected = entry.id === props.selectedId
+    const isHighlighted = highlights.has(entry.id)
+    const isActiveGroup = props.activeGroupId === 'all' || entry.groupId === props.activeGroupId
+    const isDimmed = !isSelected && ((hasSearchHighlight && !isHighlighted) || (props.activeGroupId !== 'all' && !isActiveGroup && !isHighlighted))
+    const baseOpacity = isSelected || isHighlighted ? 0.36 : isDimmed ? 0.05 : 0.14
+
+    if (Array.isArray(entry.polygon) && entry.polygon.length >= 3) {
+      const polygon = new BMap.Polygon(entry.polygon.map((point) => new BMap.Point(point[0], point[1])), {
+        strokeColor: theme.stroke,
+        strokeWeight: isSelected || isHighlighted ? 3 : 2,
+        strokeOpacity: isDimmed ? 0.28 : 0.88,
+        fillColor: theme.stroke,
+        fillOpacity: baseOpacity,
+        strokeStyle: 'solid',
+        enableClicking: true,
+      })
+      polygon.addEventListener('click', () => emitSelect(entry))
+      map.addOverlay(polygon)
+      officialMapOverlays.value.push(polygon)
+      continue
+    }
+
+    const coords = entry.mapCoords || entry.coords || [OFFICIAL_CENTER.lng, OFFICIAL_CENTER.lat]
+    const point = new BMap.Point(coords[0], coords[1])
+    const circle = new BMap.Circle(point, isSelected || isHighlighted ? 10 : 6, {
+      strokeColor: theme.stroke,
+      strokeWeight: isSelected || isHighlighted ? 2 : 1,
+      strokeOpacity: isDimmed ? 0.25 : 0.85,
+      fillColor: theme.dot,
+      fillOpacity: isDimmed ? 0.18 : 0.78,
+      enableClicking: true,
+    })
+    circle.addEventListener('click', () => emitSelect(entry))
+    map.addOverlay(circle)
+    officialMapOverlays.value.push(circle)
+  }
+}
+
+function clearOfficialMapOverlays() {
+  const map = officialMapInstance.value
+  if (!map) return
+  for (const overlay of officialMapOverlays.value) {
+    try {
+      map.removeOverlay(overlay)
+    } catch {}
+  }
+  officialMapOverlays.value = []
+}
+
+function ensureBaiduMap() {
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('browser unavailable'))
+  }
+  if (window.BMap?.Map) {
+    return Promise.resolve(window.BMap)
+  }
+  if (baiduMapPromise) return baiduMapPromise
+
+  baiduMapPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-foundit-baidu-map="true"]')
+    if (existing) {
+      const ready = () => {
+        if (window.BMap?.Map) {
+          cleanup()
+          resolve(window.BMap)
+        } else {
+          requestAnimationFrame(ready)
+        }
+      }
+      const cleanup = () => {
+        existing.removeEventListener('load', ready)
+        existing.removeEventListener('error', onError)
+      }
+      const onError = () => {
+        cleanup()
+        reject(new Error('Baidu map script failed'))
+      }
+      existing.addEventListener('load', ready)
+      existing.addEventListener('error', onError)
+      ready()
+      return
+    }
+
+    const callbackName = '__founditBaiduMapReady'
+    const cleanup = () => {
+      delete window[callbackName]
+    }
+    window[callbackName] = () => {
+      cleanup()
+      resolve(window.BMap)
+    }
+    const script = document.createElement('script')
+    script.dataset.founditBaiduMap = 'true'
+    script.async = true
+    script.defer = true
+    script.src = `https://api.map.baidu.com/api?v=3.0&ak=${OFFICIAL_MAP_AK}&callback=${callbackName}`
+    script.onerror = () => {
+      cleanup()
+      reject(new Error('Baidu map script failed'))
+    }
+    document.head.appendChild(script)
+  })
+
+  return baiduMapPromise
 }
 
 function getEntryDisplayState(entry) {
@@ -429,7 +650,46 @@ function projectPolyline(points = []) {
   cursor: crosshair;
 }
 
+.map-stage.has-official-map {
+  cursor: grab;
+}
+
+.official-map-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.official-map-layer.ready {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.map-fallback-note {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  z-index: 6;
+  max-width: min(360px, calc(100% - 28px));
+  padding: 8px 10px;
+  border: 1px solid rgba(245, 158, 11, 0.34);
+  border-radius: var(--border-radius-md);
+  background: rgba(255, 251, 235, 0.94);
+  color: var(--warning-color);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+  pointer-events: none;
+}
+
 .map-svg {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   display: block;
@@ -577,6 +837,10 @@ function projectPolyline(points = []) {
 }
 
 @media (prefers-color-scheme: dark) {
+  .map-fallback-note {
+    background: rgba(69, 45, 12, 0.92);
+  }
+
   .campus-boundary {
     fill: rgba(30, 41, 59, 0.72);
     stroke: rgba(148, 163, 184, 0.42);

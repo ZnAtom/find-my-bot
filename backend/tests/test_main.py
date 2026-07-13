@@ -35,3 +35,8 @@ def test_upload_allows_anonymous_with_trusted_origin(mock_db):
     )
     assert response.status_code == 200
     assert response.json()["url"].startswith("/uploads/")
+
+
+def test_campus_map_tile_rejects_out_of_range_zoom():
+    response = client.get("/api/campus-map/tiles/16/tile1_1.png")
+    assert response.status_code == 404

@@ -187,8 +187,8 @@ const geoHintText = computed(() => {
 const geoHintWarning = computed(() => ['unsupported', 'insecure', 'denied'].includes(geoPermissionState.value) || Boolean(geoErrorMessage.value))
 
 const mapSubtitle = computed(() => {
-  if (activeGroup.value === 'all') return '点击建筑轮廓、区域文字或地图空白位置，即可选择附近校园地点。'
-  return `正在查看${activeGroupLabel.value}，点击建筑轮廓、标记或地图位置即可选择附近地点。`
+  if (activeGroup.value === 'all') return '点击官方地图上的建筑轮廓、标记或空白位置，即可选择附近校园地点。'
+  return `正在查看${activeGroupLabel.value}，点击官方地图上的建筑轮廓、标记或空白位置即可选择附近地点。`
 })
 
 const cascaderProps = {
