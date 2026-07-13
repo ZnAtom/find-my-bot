@@ -31,9 +31,42 @@
             <el-form :model="formData" :rules="rules" ref="formRef" label-position="top">
               <div v-show="currentStep === 0" class="step-content">
                 <div class="section-title">
-                  <h2>基础信息</h2>
-                  <p>先说明这是一条寻物还是招领记录。</p>
+                  <h2>图片识别</h2>
+                  <p>先上传图片并识别物品信息，识别结果可继续手动调整。</p>
                 </div>
+
+                <el-form-item label="图片">
+                  <el-upload
+                    class="image-upload"
+                    :action="uploadAction"
+                    :with-credentials="true"
+                    :before-upload="beforeUpload"
+                    :on-success="handleUploadSuccess"
+                    :on-error="handleUploadError"
+                    :on-remove="handleRemove"
+                    :file-list="fileList"
+                    list-type="picture-card"
+                    :limit="3"
+                    accept="image/*"
+                  >
+                    <div class="upload-trigger">
+                      <el-icon size="28"><Plus /></el-icon>
+                      <span>添加图片</span>
+                    </div>
+                  </el-upload>
+                  <div class="field-tip">最多 3 张，单张不超过 5MB。上传后点击识别，可自动填写名称、分类和详细特征。</div>
+                  <div class="image-analysis-actions">
+                    <el-button
+                      round
+                      :disabled="uploadedUrls.length === 0"
+                      :loading="imageAnalyzing"
+                      @click="analyzeUploadedImages"
+                    >
+                      <el-icon><MagicStick /></el-icon>
+                      从图片识别
+                    </el-button>
+                  </div>
+                </el-form-item>
 
                 <el-form-item prop="direction">
                   <fieldset class="form-fieldset">
@@ -68,11 +101,20 @@
                     </el-select>
                   </el-form-item>
                 </div>
+
+                <el-form-item label="详细特征" prop="description">
+                  <el-input
+                    type="textarea"
+                    v-model="formData.description"
+                    placeholder="颜色、品牌、外观、特殊标记等"
+                    :rows="5"
+                  />
+                </el-form-item>
               </div>
 
               <div v-show="currentStep === 1" class="step-content">
                 <div class="section-title">
-                  <h2>地点与特征</h2>
+                  <h2>地点与时间</h2>
                   <p>{{ detailStepDescription }}</p>
                 </div>
 
@@ -102,48 +144,6 @@
                     <el-input v-model="formData.storage_location" placeholder="例如：已交到图书馆前台、暂存在二教门卫处" size="large" />
                   </el-form-item>
                 </div>
-
-                <el-form-item label="详细特征" prop="description">
-                  <el-input
-                    type="textarea"
-                    v-model="formData.description"
-                    placeholder="颜色、品牌、外观、特殊标记、最后出现的位置等"
-                    :rows="5"
-                  />
-                </el-form-item>
-
-                <el-form-item label="图片">
-                  <el-upload
-                    class="image-upload"
-                    :action="uploadAction"
-                    :with-credentials="true"
-                    :before-upload="beforeUpload"
-                    :on-success="handleUploadSuccess"
-                    :on-error="handleUploadError"
-                    :on-remove="handleRemove"
-                    :file-list="fileList"
-                    list-type="picture-card"
-                    :limit="3"
-                    accept="image/*"
-                  >
-                    <div class="upload-trigger">
-                      <el-icon size="28"><Plus /></el-icon>
-                      <span>添加图片</span>
-                    </div>
-                  </el-upload>
-                  <div class="field-tip">最多 3 张，单张不超过 5MB。</div>
-                  <div class="image-analysis-actions">
-                    <el-button
-                      round
-                      :disabled="uploadedUrls.length === 0"
-                      :loading="imageAnalyzing"
-                      @click="analyzeUploadedImages"
-                    >
-                      <el-icon><MagicStick /></el-icon>
-                      从图片识别
-                    </el-button>
-                  </div>
-                </el-form-item>
               </div>
 
               <div v-show="currentStep === 2" class="step-content">
@@ -327,8 +327,8 @@ const matchResults = ref([])
 const leaveContact = ref(false)
 
 const steps = [
-  { title: '基础信息', desc: '类型、名称、分类' },
-  { title: '地点与特征', desc: '地点、时间、图片' },
+  { title: '图片识别', desc: '图片、名称、分类' },
+  { title: '地点与时间', desc: '地点、时间、存放处' },
   { title: '联系方式', desc: '姓名、手机、QQ/邮箱' },
 ]
 
@@ -360,8 +360,8 @@ const pageSubtitle = computed(() => (
 ))
 const detailStepDescription = computed(() => (
   isFound.value
-    ? '选择捡到地点，填写当前存放处和可核对的特征。'
-    : '选择丢失地点，填写时间和详细特征，匹配结果会更准确。'
+    ? '选择捡到地点，填写捡到时间和当前存放处。'
+    : '选择丢失地点和大致丢失时间，匹配结果会更准确。'
 ))
 const contactStepDescription = computed(() => (
   isFound.value
@@ -388,10 +388,10 @@ const previewContactLabel = computed(() => {
   return `${contactMethodCount.value} 种联系方式`
 })
 const readinessItems = computed(() => [
+  { label: '图片或物品特征', done: Boolean(uploadedUrls.value.length || formData.description) },
   { label: '类型、名称和分类', done: Boolean(formData.direction && formData.item_name && formData.item_type) },
   { label: isFound.value ? '地点或存放处' : '丢失地点', done: isFound.value ? Boolean(formData.location || formData.storage_location) : Boolean(formData.location) },
   { label: '时间信息', done: Boolean(formData.lost_time) },
-  { label: '特征描述或图片', done: Boolean(formData.description || uploadedUrls.value.length) },
   { label: '联系方式设置', done: !isContactRequired() || contactMethodCount.value > 0 },
 ])
 
@@ -451,8 +451,8 @@ const rules = {
 }
 
 const stepFields = [
-  ['direction', 'item_name', 'item_type'],
-  ['location', 'description'],
+  ['direction', 'item_name', 'item_type', 'description'],
+  ['location'],
   ['contact_person', 'contact_phone', 'contact_email'],
 ]
 
@@ -594,8 +594,8 @@ const fieldStepMap = {
   direction: 0,
   item_name: 0,
   item_type: 0,
+  description: 0,
   location: 1,
-  description: 1,
   contact_person: 2,
   contact_phone: 2,
   contact_email: 2,
