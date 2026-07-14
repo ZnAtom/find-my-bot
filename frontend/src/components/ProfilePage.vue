@@ -69,7 +69,7 @@
                       <span class="item-thumb">
                         <img
                           v-if="firstImage(scope.row.image_url)"
-                          :src="resolveImageUrl(firstImage(scope.row.image_url))"
+                          :src="firstImage(scope.row.image_url)"
                           alt=""
                         />
                         <el-icon v-else><Picture /></el-icon>
@@ -242,7 +242,7 @@ import {
   User,
 } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user'
-import { lostItemsApi, meApi, resolveImageUrl } from '../api'
+import { firstSafeImageUrl, lostItemsApi, meApi } from '../api'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -437,8 +437,7 @@ const handlePageChange = (nextPage) => {
 }
 
 const firstImage = (url) => {
-  if (!url) return ''
-  return url.split(',').map(v => v.trim()).filter(Boolean)[0] || ''
+  return firstSafeImageUrl(url)
 }
 
 const apiErrorText = (error, fallback) => {

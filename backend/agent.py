@@ -233,15 +233,12 @@ def create_lost(item_name: str, item_type: str, location: str,
         vector_str = None
     
     try:
-        cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM lost_items")
-        next_id = cur.fetchone()[0]
-
         cur.execute(
             """INSERT INTO lost_items
-               (id, item_name, item_type, description, location, lost_time, direction, status,
+               (item_name, item_type, description, location, lost_time, direction, status,
                 contact_person, contact_phone, contact_qq, vector)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
-            (next_id, item_name, item_type or "其他", description, location, lost_time, direction, item_status,
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *""",
+            (item_name, item_type or "其他", description, location, lost_time, direction, item_status,
              contact_person, contact_phone, contact_qq, vector_str)
         )
         conn.commit()

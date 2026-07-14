@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: foundit-db-backup
+  labels:
+    app: foundit-db-backup
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: foundit-db-backup-pvc
+  annotations:
+    "helm.sh/resource-policy": keep
+  labels:
+    app: foundit-db-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: foundit-db-backup
+  labels:
+    app: foundit-db-backup
+spec:
+  schedule: "0 20 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: foundit-db-backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: foundit-db-backup
+          automountServiceAccountToken: false
+          securityContext:
+            fsGroup: 999
+          containers:
+            - name: backup
+              image: ghcr.io/znatom/find-my-bot-backend:latest
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  umask 077
+                  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+                  export PGPASSWORD="${DB_PASSWORD}"
+                  pg_dump \
+                    -h "${DB_HOST}" \
+                    -U "${DB_USER}" \
+                    -d "${DB_NAME}" \
+                    --format=plain \
+                    --no-owner \
+                    --no-privileges \
+                    | gzip -c \
+                    | openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+                        -pass env:BACKUP_ENCRYPTION_PASSWORD \
+                        -out "/backup/${DB_NAME}-${timestamp}.sql.gz.enc"
+                  find /backup -type f -name "${DB_NAME}-*.sql.gz.enc" -mtime +"${BACKUP_RETENTION_DAYS}" -delete
+              env:
+                - name: DB_USER
+                  value: "appuser"
+                - name: DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: foundit-db-secret
+                      key: postgres_password
+                - name: DB_NAME
+                  value: "lostfound"
+                - name: DB_HOST
+                  value: "foundit-db"
+                - name: BACKUP_ENCRYPTION_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: foundit-backup-secret
+                      key: encryption_password
+                - name: BACKUP_RETENTION_DAYS
+                  value: "30"
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: foundit-db-backup-pvc

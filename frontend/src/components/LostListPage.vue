@@ -67,7 +67,7 @@
           <el-col v-for="item in items" :key="item.id" :xs="24" :sm="12" :lg="6">
             <article class="data-card item-card" @click="goDetail(item.id)">
               <div class="image-frame item-image">
-                <img v-if="firstImage(item.image_url)" :src="resolveImageUrl(firstImage(item.image_url))" alt="物品图片" />
+                <img v-if="firstImage(item.image_url)" :src="firstImage(item.image_url)" alt="物品图片" />
                 <div v-else class="image-placeholder">
                   <el-icon size="34"><Picture /></el-icon>
                 </div>
@@ -78,11 +78,26 @@
                   <span class="type-chip">{{ getDirectionText(item.direction) }}</span>
                   <span>{{ formatDate(item.created_at) }}</span>
                 </div>
-                <h3 v-html="highlight(item.item_name)"></h3>
-                <p v-html="highlight(item.description || '暂无描述')"></p>
+                <h3>
+                  <template v-for="(part, index) in highlightParts(item.item_name)" :key="`name-${item.id}-${index}`">
+                    <mark v-if="part.mark" class="hl">{{ part.text }}</mark>
+                    <span v-else>{{ part.text }}</span>
+                  </template>
+                </h3>
+                <p>
+                  <template v-for="(part, index) in highlightParts(item.description || '暂无描述')" :key="`desc-${item.id}-${index}`">
+                    <mark v-if="part.mark" class="hl">{{ part.text }}</mark>
+                    <span v-else>{{ part.text }}</span>
+                  </template>
+                </p>
                 <div class="item-location">
                   <el-icon><MapLocation /></el-icon>
-                  <span v-html="highlight(item.location || '未知地点')"></span>
+                  <span>
+                    <template v-for="(part, index) in highlightParts(item.location || '未知地点')" :key="`loc-${item.id}-${index}`">
+                      <mark v-if="part.mark" class="hl">{{ part.text }}</mark>
+                      <span v-else>{{ part.text }}</span>
+                    </template>
+                  </span>
                 </div>
 
                 <div v-if="item.similarity !== undefined" class="score-row">
@@ -124,7 +139,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Search, Picture, MapLocation } from '@element-plus/icons-vue'
-import { lostItemsApi, resolveImageUrl } from '../api'
+import { firstSafeImageUrl, lostItemsApi } from '../api'
 
 const searchQuery = ref('')
 const filterType = ref('')
@@ -261,8 +276,7 @@ const resetSearch = () => {
 }
 
 const firstImage = (url) => {
-  if (!url) return ''
-  return url.split(',').map(v => v.trim()).filter(Boolean)[0] || ''
+  return firstSafeImageUrl(url)
 }
 
 const getStatusClass = (item) => {
@@ -283,24 +297,31 @@ const goDetail = (id) => {
   router.push({ name: 'detail', params: { id } })
 }
 
-const highlight = (text) => {
-  if (!text || !searched.value || searchMode.value === 'semantic') return escapeHtml(text || '')
-  const q = searchQuery.value.trim()
-  if (!q) return escapeHtml(text)
-  const escaped = escapeHtml(text)
-  const words = q.split(/\s+/).filter(Boolean)
-  let result = escaped
-  words.forEach(w => {
-    const escapedW = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    result = result.replace(new RegExp(`(${escapedW})`, 'gi'), '<mark class="hl">$1</mark>')
-  })
-  return result
-}
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-const escapeHtml = (str) => {
-  const div = document.createElement('div')
-  div.textContent = str
-  return div.innerHTML
+const highlightParts = (text) => {
+  const value = String(text || '')
+  if (!value || !searched.value || searchMode.value === 'semantic') return [{ text: value, mark: false }]
+  const q = searchQuery.value.trim()
+  if (!q) return [{ text: value, mark: false }]
+  const words = q.split(/\s+/).filter(Boolean)
+  if (words.length === 0) return [{ text: value, mark: false }]
+
+  const regex = new RegExp(words.map(escapeRegExp).join('|'), 'gi')
+  const parts = []
+  let lastIndex = 0
+  value.replace(regex, (match, offset) => {
+    if (offset > lastIndex) {
+      parts.push({ text: value.slice(lastIndex, offset), mark: false })
+    }
+    parts.push({ text: match, mark: true })
+    lastIndex = offset + match.length
+    return match
+  })
+  if (lastIndex < value.length) {
+    parts.push({ text: value.slice(lastIndex), mark: false })
+  }
+  return parts.length ? parts : [{ text: value, mark: false }]
 }
 
 const simColor = (score) => {

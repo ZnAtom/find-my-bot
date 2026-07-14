@@ -6,6 +6,9 @@ resources:
 - frontend.yaml
 - backend.yaml
 - ingress.yaml
+- data-retention-cronjob.yaml
+- db-backup.yaml
+- db-network-policy.yaml
 
 # These image tags will be replaced dynamically by the CI/CD pipeline
 images:

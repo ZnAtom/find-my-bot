@@ -54,7 +54,7 @@
                       <span>添加图片</span>
                     </div>
                   </el-upload>
-                  <div class="field-tip">最多 3 张，单张不超过 5MB。上传后点击识别，可自动填写名称、分类和详细特征。</div>
+                  <div class="field-tip">最多 3 张，单张不超过 5MB。点击识别时，图片会发送至学校图像理解服务，用于自动填写名称、分类和详细特征。</div>
                   <div class="image-analysis-actions">
                     <el-button
                       round

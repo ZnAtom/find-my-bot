@@ -33,9 +33,9 @@
               <el-image
                 v-if="currentImage"
                 class="main-image-content"
-                :src="resolveImageUrl(currentImage)"
+                :src="currentImage"
                 fit="contain"
-                :preview-src-list="imageList.map(u => resolveImageUrl(u))"
+                :preview-src-list="imageList"
                 :initial-index="currentImageIndex"
                 preview-teleported
               >
@@ -58,7 +58,7 @@
                 type="button"
                 @click="currentImageIndex = idx"
               >
-                <img :src="resolveImageUrl(img)" alt="" />
+                <img :src="img" alt="" />
               </button>
             </div>
           </div>
@@ -165,7 +165,7 @@
             <el-col v-for="sim in similarItems" :key="sim.id" :xs="24" :sm="12" :lg="6">
               <article class="data-card sim-card" @click="router.push({ name: 'detail', params: { id: sim.id } })">
                 <div class="image-frame sim-image">
-                  <img v-if="firstImage(sim.image_url)" :src="resolveImageUrl(firstImage(sim.image_url))" alt="" />
+                  <img v-if="firstImage(sim.image_url)" :src="firstImage(sim.image_url)" alt="" />
                   <div v-else class="image-placeholder"><el-icon><Picture /></el-icon></div>
                 </div>
                 <div class="sim-body">
@@ -238,7 +238,7 @@ import {
   User,
   WarningFilled,
 } from '@element-plus/icons-vue'
-import { lostItemsApi, claimsApi, resolveImageUrl } from '../api'
+import { firstSafeImageUrl, lostItemsApi, claimsApi, resolveImageUrl } from '../api'
 import { useUserStore } from '../stores/user'
 
 const userStore = useUserStore()
@@ -255,7 +255,7 @@ const myClaims = ref([])
 
 const imageList = computed(() => {
   if (!item.value?.image_url) return []
-  return item.value.image_url.split(',').map(v => v.trim()).filter(Boolean)
+  return item.value.image_url.split(',').map(resolveImageUrl).filter(Boolean)
 })
 
 const currentImage = computed(() => {
@@ -354,8 +354,7 @@ const loadSimilar = async () => {
 }
 
 const firstImage = (url) => {
-  if (!url) return ''
-  return url.split(',').map(v => v.trim()).filter(Boolean)[0] || ''
+  return firstSafeImageUrl(url)
 }
 
 const goBack = () => {

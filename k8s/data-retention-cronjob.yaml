@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: foundit-data-retention
+  labels:
+    app: foundit-data-retention
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: foundit-data-retention
+  labels:
+    app: foundit-data-retention
+spec:
+  schedule: "30 19 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: foundit-data-retention
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: foundit-data-retention
+          automountServiceAccountToken: false
+          containers:
+            - name: cleanup
+              image: ghcr.io/znatom/find-my-bot-backend:latest
+              command:
+                - python
+                - /app/cleanup_sensitive_data.py
+              env:
+                - name: DB_USER
+                  value: "appuser"
+                - name: DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: foundit-db-secret
+                      key: postgres_password
+                - name: DB_NAME
+                  value: "lostfound"
+                - name: DB_HOST
+                  value: "foundit-db"
+                - name: CONTACT_RETENTION_DAYS
+                  value: "90"

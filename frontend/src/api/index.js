@@ -108,23 +108,35 @@ export const uploadApi = {
   analyzeImages: (imageUrls, config = {}) => api.post('/image-analysis', { image_urls: imageUrls }, config),
 }
 
+function sameOriginUploadUrl(url) {
+  try {
+    const parsed = new URL(url, window.location.origin)
+    const apiOrigin = apiBase ? new URL(apiBase, window.location.origin).origin : window.location.origin
+    if (parsed.origin !== apiOrigin || !parsed.pathname.startsWith('/uploads/')) return ''
+    return apiBase && parsed.origin === window.location.origin ? apiBase + parsed.pathname : parsed.href
+  } catch {
+    return ''
+  }
+}
+
 /**
- * 将后端返回的相对路径或 localhost URL 转为可访问的完整 URL
- * 开发环境：http://localhost:8000/uploads/xxx.png → 保持
- * 生产环境：/uploads/xxx.png → 同域，保持不变
+ * 只渲染本站上传目录下的图片，避免第三方图片 URL 造成访问信息泄露。
  */
 export function resolveImageUrl(url) {
-  if (!url) return ''
-  // 已经是绝对 URL（含协议）→ 直接返回
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    // 开发环境下 localhost URL 保持不变；生产环境下不应出现 localhost
-    return url
+  const value = String(url || '').trim()
+  if (!value) return ''
+  if (value.startsWith('/uploads/')) return apiBase + value
+  if (value.startsWith('uploads/')) return apiBase + `/${value}`
+  return sameOriginUploadUrl(value)
+}
+
+export function firstSafeImageUrl(urls) {
+  if (!urls) return ''
+  for (const rawUrl of String(urls).split(',')) {
+    const resolved = resolveImageUrl(rawUrl)
+    if (resolved) return resolved
   }
-  // 相对路径 → 拼接 API base
-  if (url.startsWith('/')) {
-    return apiBase + url
-  }
-  return url
+  return ''
 }
 
 export { apiBase }
