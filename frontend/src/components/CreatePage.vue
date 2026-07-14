@@ -158,7 +158,7 @@
                     />
                   </el-form-item>
 
-                  <el-form-item v-if="isFound" label="现在存放处（选填）" prop="storage_location">
+                  <el-form-item v-if="isFound" label="现在存放处" prop="storage_location" required>
                     <el-input v-model="formData.storage_location" placeholder="例如：已交到图书馆前台、暂存在二教门卫处" size="large" />
                   </el-form-item>
                 </div>
@@ -396,7 +396,7 @@ const contactStepDescription = computed(() => (
 const locationLabel = computed(() => isFound.value ? '捡到地点（选填）' : '丢失地点')
 const locationSelectTip = computed(() => (
   isFound.value
-    ? '不确定捡到地点可以留空；更建议填写现在存放处。'
+    ? '捡到地点可留空，但现在存放处为必填。'
     : '可搜索校园地点，也可以使用当前位置自动匹配最近地点。'
 ))
 const locationSearchPlaceholder = computed(() => (
@@ -412,7 +412,11 @@ const locationCascaderProps = {
 const timeLabel = computed(() => isFound.value ? '捡到时间' : '丢失时间')
 const submitButtonText = computed(() => isFound.value ? '发布招领' : '发布寻物')
 const contactMethodCount = computed(() => [formData.contact_phone, formData.contact_qq, formData.contact_email].filter(Boolean).length)
-const previewLocation = computed(() => formData.location || (isFound.value ? '地点可稍后补充' : '待选择地点'))
+const previewLocation = computed(() => (
+  isFound.value
+    ? (formData.storage_location || formData.location || '待填写现在存放处')
+    : (formData.location || '待选择地点')
+))
 const previewTime = computed(() => formatPreviewTime(formData.lost_time))
 const previewContactLabel = computed(() => {
   if (!isContactRequired()) return isFound.value && !leaveContact.value ? '匿名招领' : '联系方式可选'
@@ -422,7 +426,7 @@ const previewContactLabel = computed(() => {
 const readinessItems = computed(() => [
   { label: '图片或物品特征', done: Boolean(uploadedUrls.value.length || formData.description) },
   { label: '类型、名称和分类', done: Boolean(formData.direction && formData.item_name && formData.item_type) },
-  { label: isFound.value ? '地点或存放处' : '丢失地点', done: isFound.value ? Boolean(formData.location || formData.storage_location) : Boolean(formData.location) },
+  { label: isFound.value ? '现在存放处' : '丢失地点', done: isFound.value ? Boolean(formData.storage_location) : Boolean(formData.location) },
   { label: '时间信息', done: Boolean(formData.lost_time) },
   { label: '联系方式设置', done: !isContactRequired() || contactMethodCount.value > 0 },
 ])
@@ -442,6 +446,14 @@ function validateLocation(rule, value, callback) {
 function validateDescription(rule, value, callback) {
   if (formData.direction === 'lost' && !value) {
     callback(new Error('请输入详细特征'))
+    return
+  }
+  callback()
+}
+
+function validateStorageLocation(rule, value, callback) {
+  if (isFound.value && !value) {
+    callback(new Error('请输入现在存放处'))
     return
   }
   callback()
@@ -476,17 +488,18 @@ const rules = {
   item_name: [{ required: true, message: '请输入物品名称', trigger: 'blur' }],
   item_type: [{ required: true, message: '请选择物品分类', trigger: 'change' }],
   location: [{ validator: validateLocation, trigger: 'change' }],
+  storage_location: [{ validator: validateStorageLocation, trigger: 'blur' }],
   description: [{ validator: validateDescription, trigger: 'blur' }],
   contact_person: [{ validator: validateContactPerson, trigger: 'blur' }],
   contact_phone: [{ validator: validatePhone, trigger: 'blur' }],
   contact_email: [{ validator: validateEmail, trigger: 'blur' }],
 }
 
-const stepFields = [
+const stepFields = computed(() => [
   ['direction', 'item_name', 'item_type', 'description'],
-  ['location'],
+  isFound.value ? ['location', 'storage_location'] : ['location'],
   ['contact_person', 'contact_phone', 'contact_email'],
-]
+])
 
 onMounted(() => {
   if (route.query.type === 'lost' || route.query.type === 'found') {
@@ -658,7 +671,7 @@ const formatApiError = (error, fallback = '未知错误') => {
 }
 
 const validateStep = async () => {
-  const fields = stepFields[currentStep.value]
+  const fields = stepFields.value[currentStep.value]
   if (!formRef.value || !fields) return true
   try {
     await formRef.value.validateField(fields)

@@ -1409,6 +1409,10 @@ def create_lost_item(item: LostItemCreate, request: Request):
     if direction == "found" and not current_user and has_contact:
         raise HTTPException(status_code=401, detail="匿名招领不能填写联系方式，请登录后实名发布")
 
+    storage_location = none_if_empty(item.storage_location.strip() if isinstance(item.storage_location, str) else item.storage_location)
+    if direction == "found" and not storage_location:
+        raise HTTPException(status_code=400, detail="发布招领信息需要填写现在存放处")
+
     if direction == "found" and not current_user:
         contact_visibility = "private"
     elif item.contact_visibility is not None:
@@ -1438,7 +1442,7 @@ def create_lost_item(item: LostItemCreate, request: Request):
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
             (next_id, item.item_name, none_if_empty(item.item_type),
              none_if_empty(item.description), none_if_empty(item.location),
-             none_if_empty(item.storage_location), none_if_empty(item.lost_time), direction, status, contact_visibility,
+             storage_location, none_if_empty(item.lost_time), direction, status, contact_visibility,
              none_if_empty(item.image_url), contact_person,
              none_if_empty(item.contact_phone), none_if_empty(item.contact_qq), none_if_empty(item.contact_email),
              current_user["id"] if current_user else None,
