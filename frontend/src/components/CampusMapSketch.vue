@@ -157,6 +157,7 @@ import {
   projectCampusBoundary,
   projectCampusPolygon,
   projectCampusPoint,
+  shiftCampusPoint,
 } from '../data/campusLocations'
 import { apiBase } from '../api'
 
@@ -585,6 +586,7 @@ function getEntryDisplayState(entry) {
 
 function projectPolyline(points = []) {
   return points
+    .map((point) => shiftCampusPoint(point) || point)
     .map((point) => projectCampusPoint(point, mapBounds.value, viewBox))
     .map((point) => `${point.x},${point.y}`)
     .join(' ')

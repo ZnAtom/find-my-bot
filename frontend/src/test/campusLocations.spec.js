@@ -35,7 +35,7 @@ describe('campus location data', () => {
   it('searches residential and dining locations from the campus map', () => {
     expect(searchCampusLocations('宿舍')[0].label).toBe('学生公寓8号楼')
     expect(searchCampusLocations('白玉兰')[0].label).toBe('白玉兰一楼学生食堂')
-    expect(campusLocationEntries.some(entry => entry.sectionLabel === '住宿')).toBe(true)
+    expect(campusLocationEntries.some(entry => entry.sectionLabel === '学生公寓')).toBe(true)
     expect(campusLocationEntries.some(entry => entry.sectionLabel === '餐饮')).toBe(true)
   })
 

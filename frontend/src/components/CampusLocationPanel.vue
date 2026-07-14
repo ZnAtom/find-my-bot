@@ -7,10 +7,16 @@
         <p>{{ subtitle }}</p>
       </div>
       <div class="map-actions">
-        <el-button text type="primary" :loading="locating" @click="handleLocate">
-          <el-icon><Compass /></el-icon>
-          使用当前位置
-        </el-button>
+        <el-tooltip
+          content="功能测试中，结果可能不准确，请以手动选择为准"
+          placement="top"
+          :show-after="200"
+        >
+          <el-button class="locate-action" text type="primary" :loading="locating" @click="handleLocate">
+            <el-icon><Compass /></el-icon>
+            使用当前位置
+          </el-button>
+        </el-tooltip>
       </div>
     </div>
 
@@ -428,6 +434,11 @@ function sourceLabel(source) {
   gap: 8px;
   align-items: center;
   flex: 0 0 auto;
+}
+
+.locate-action {
+  display: inline-flex;
+  align-items: center;
 }
 
 .geo-hint {

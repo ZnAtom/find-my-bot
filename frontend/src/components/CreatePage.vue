@@ -118,14 +118,32 @@
                   <p>{{ detailStepDescription }}</p>
                 </div>
 
-                <el-form-item prop="location" class="location-form-item">
-                  <CampusLocationPanel
-                    v-model="formData.location"
-                    :title="locationLabel"
-                    :subtitle="locationPanelSubtitle"
-                    :search-placeholder="locationSearchPlaceholder"
-                    @select="handleLocationSelect"
-                  />
+                <el-form-item :label="locationLabel" prop="location" class="location-form-item">
+                  <div class="compact-location-row">
+                    <el-cascader
+                      v-model="selectedLocationPath"
+                      class="location-cascader"
+                      :options="campusLocationOptions"
+                      :props="locationCascaderProps"
+                      filterable
+                      clearable
+                      :show-all-levels="true"
+                      :placeholder="locationSearchPlaceholder"
+                      size="large"
+                      @change="handleLocationChange"
+                    />
+                    <el-tooltip
+                      content="功能测试中，结果可能不准确，请以手动选择为准"
+                      placement="top"
+                      :show-after="200"
+                    >
+                      <el-button class="locate-action" size="large" :loading="locating" @click="handleLocate">
+                        <el-icon><Compass /></el-icon>
+                        使用当前位置
+                      </el-button>
+                    </el-tooltip>
+                  </div>
+                  <div class="field-tip">{{ locationSelectTip }}</div>
                 </el-form-item>
 
                 <div :class="['form-grid', { single: !isFound }]">
@@ -306,10 +324,15 @@
 import { computed, onMounted, ref, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, User, Phone, ChatDotRound, Warning, CircleCheck, Message, MapLocation, Clock, Picture, MagicStick } from '@element-plus/icons-vue'
+import { Plus, User, Phone, ChatDotRound, Warning, CircleCheck, Message, MapLocation, Clock, Picture, MagicStick, Compass } from '@element-plus/icons-vue'
 import { apiBase, lostItemsApi, uploadApi } from '../api'
 import { useUserStore } from '../stores/user'
-import CampusLocationPanel from './CampusLocationPanel.vue'
+import {
+  campusLocationTree,
+  findCampusLocationByPathCodes,
+  findNearestCampusLocation,
+  formatDistanceMeters,
+} from '../data/campusLocations'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -325,6 +348,8 @@ const uploadAction = computed(() => `${apiBase}/api/upload`)
 const matchDialogVisible = ref(false)
 const matchResults = ref([])
 const leaveContact = ref(false)
+const locating = ref(false)
+const selectedLocationPath = ref([])
 
 const steps = [
   { title: '图片识别', desc: '图片、名称、分类' },
@@ -369,14 +394,21 @@ const contactStepDescription = computed(() => (
     : '寻物信息需要至少一种联系方式，默认登录用户可见。'
 ))
 const locationLabel = computed(() => isFound.value ? '捡到地点（选填）' : '丢失地点')
-const locationPanelSubtitle = computed(() => (
+const locationSelectTip = computed(() => (
   isFound.value
-    ? '可以按校园地点层级选择，也可以使用当前位置自动填写捡到地点。'
-    : '建议选择具体楼宇或服务点，系统会把地点信息一起用于匹配。'
+    ? '不确定捡到地点可以留空；更建议填写现在存放处。'
+    : '可搜索校园地点，也可以使用当前位置自动匹配最近地点。'
 ))
 const locationSearchPlaceholder = computed(() => (
-  isFound.value ? '搜索捡到地点，例如图书馆、菜鸟驿站' : '搜索丢失地点，例如信息学院、尚科餐厅'
+  isFound.value ? '按区域选择或搜索捡到地点' : '按区域选择或搜索丢失地点'
 ))
+const campusLocationOptions = computed(() => campusLocationTree[0]?.children || campusLocationTree)
+const locationCascaderProps = {
+  value: 'value',
+  label: 'label',
+  children: 'children',
+  emitPath: true,
+}
 const timeLabel = computed(() => isFound.value ? '捡到时间' : '丢失时间')
 const submitButtonText = computed(() => isFound.value ? '发布招领' : '发布寻物')
 const contactMethodCount = computed(() => [formData.contact_phone, formData.contact_qq, formData.contact_email].filter(Boolean).length)
@@ -531,13 +563,72 @@ const fillFromProfile = (targetField, userField) => {
   ElMessage.success('已自动填写')
 }
 
-const handleLocationSelect = (payload) => {
-  if (!payload) {
+const handleLocationChange = (pathCodes = selectedLocationPath.value) => {
+  if (!Array.isArray(pathCodes) || pathCodes.length === 0) {
     formData.location = ''
+    formRef.value?.clearValidate(['location'])
     return
   }
-  formData.location = payload.pathLabel || payload.label || formData.location
+
+  const campusCode = campusLocationTree[0]?.value
+  const fullPathCodes = campusCode ? [campusCode, ...pathCodes] : pathCodes
+  const entry = findCampusLocationByPathCodes(fullPathCodes)
+  formData.location = entry?.pathLabel || ''
   formRef.value?.clearValidate(['location'])
+}
+
+const applyLocationEntry = (entry) => {
+  if (!entry) return
+  formData.location = entry.pathLabel || entry.label || ''
+  selectedLocationPath.value = Array.isArray(entry.pathCodes) ? entry.pathCodes.slice(1) : []
+  formRef.value?.clearValidate(['location'])
+}
+
+const handleLocate = () => {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+    ElMessage.warning('当前浏览器不支持定位，可以手动选择地点')
+    return
+  }
+  if (typeof window !== 'undefined' && !window.isSecureContext) {
+    ElMessage.warning('当前位置需要 HTTPS 或 localhost 环境，可以手动选择地点')
+    return
+  }
+
+  locating.value = true
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      locating.value = false
+      const coords = [position.coords.longitude, position.coords.latitude]
+      const nearest = findNearestCampusLocation(coords)
+      if (!nearest) {
+        ElMessage.warning('未找到可匹配的校园地点')
+        return
+      }
+      applyLocationEntry(nearest.entry)
+      const distanceLabel = formatDistanceMeters(nearest.distanceMeters)
+      if (nearest.distanceMeters > 1500) {
+        ElMessage.warning(`当前位置离校内地点较远，已填入 ${nearest.entry.label}（约 ${distanceLabel}）`)
+      } else {
+        ElMessage.success(`已定位到 ${nearest.entry.label}`)
+      }
+    },
+    (error) => {
+      locating.value = false
+      ElMessage.warning(formatGeoError(error))
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 30000,
+    },
+  )
+}
+
+const formatGeoError = (error) => {
+  if (error?.code === 1) return '定位权限被拒绝，可以手动选择地点'
+  if (error?.code === 2) return '暂时无法获取当前位置，可以手动选择地点'
+  if (error?.code === 3) return '定位请求超时，可以手动选择地点'
+  return '暂时无法使用当前位置，可以手动选择地点'
 }
 
 const formatPreviewTime = (value) => {
@@ -927,6 +1018,22 @@ const confirmSubmit = async () => {
   width: 100%;
 }
 
+.compact-location-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.location-cascader {
+  width: 100%;
+}
+
+.locate-action {
+  width: 100%;
+}
+
 .form-fieldset {
   width: 100%;
   min-width: 0;
@@ -1203,8 +1310,13 @@ const confirmSubmit = async () => {
 
   .steps-panel,
   .form-grid,
-  .post-type-grid {
+  .post-type-grid,
+  .compact-location-row {
     grid-template-columns: 1fr;
+  }
+
+  .compact-location-row .el-button {
+    width: 100%;
   }
 
   .match-item {
