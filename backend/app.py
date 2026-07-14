@@ -296,8 +296,30 @@ async def auth_callback(request: Request, code: Optional[str] = None, state: Opt
 
     token_payload = await exchange_code_for_token(code)
     userinfo = await get_casdoor_userinfo(token_payload["access_token"])
-    user = get_or_create_user(userinfo)
+    user, is_new_user = get_or_create_user(userinfo)
     session_token = create_session_token(user["id"])
+
+    # 新注册用户：插入欢迎通知
+    if is_new_user:
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO notifications
+                   (user_id, title, message, notification_type)
+                   VALUES (%s, %s, %s, %s)""",
+                (
+                    user["id"],
+                    "👋 欢迎来到 FoundIt！",
+                    "网站正在紧锣密鼓地打磨中，如果你发现 bug 或有任何建议，请毫不犹豫地告诉我们。联系管理员：jxy264@qq.com。你的每一条反馈，都是我们进步的动力 ❤️",
+                    "system",
+                ),
+            )
+            conn.commit()
+            cur.close()
+            release_db_connection(conn)
+        except Exception:
+            pass  # 通知写入失败不影响登录流程
 
     redirect_to = safe_frontend_redirect(request.cookies.get(NEXT_COOKIE))
     response = RedirectResponse(redirect_to, status_code=302)
@@ -1077,6 +1099,45 @@ def mark_notification_read(notification_id: int, request: Request):
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=400, detail=f"更新通知失败: {e}")
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+
+class AdminNotificationRequest(BaseModel):
+    title: str
+    message: Optional[str] = None
+    user_ids: Optional[List[int]] = None  # None = all users
+
+
+@app.post("/api/admin/notifications")
+def admin_send_notification(body: AdminNotificationRequest, request: Request):
+    """管理员向所有用户或指定用户发送系统通知"""
+    require_admin(request)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        if body.user_ids and len(body.user_ids) > 0:
+            # 发送给指定用户
+            for uid in body.user_ids:
+                cur.execute(
+                    """INSERT INTO notifications (user_id, title, message, notification_type)
+                       VALUES (%s, %s, %s, 'system')""",
+                    (uid, body.title, body.message),
+                )
+        else:
+            # 发送给所有用户
+            cur.execute(
+                """INSERT INTO notifications (user_id, title, message, notification_type)
+                   SELECT id, %s, %s, 'system' FROM users""",
+                (body.title, body.message),
+            )
+        conn.commit()
+        count = cur.rowcount if not body.user_ids else len(body.user_ids)
+        return {"success": True, "sent_count": count}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"发送通知失败: {e}")
     finally:
         cur.close()
         release_db_connection(conn)

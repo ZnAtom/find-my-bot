@@ -147,7 +147,8 @@ def _serialize_user(row) -> dict:
     return user
 
 
-def get_or_create_user(userinfo: dict) -> dict:
+def get_or_create_user(userinfo: dict):
+    """返回 (user_dict, is_new) 元组 — is_new 为 True 表示首次创建用户"""
     casdoor_sub = _pick_first(userinfo.get("sub"), userinfo.get("id"), userinfo.get("name"))
     if not casdoor_sub:
         raise HTTPException(status_code=401, detail="Casdoor 用户信息缺少唯一标识")
@@ -173,7 +174,7 @@ def get_or_create_user(userinfo: dict) -> dict:
             )
             updated_row = cur.fetchone()
             conn.commit()
-            return _serialize_user(updated_row)
+            return _serialize_user(updated_row), False
 
         cur.execute("SELECT * FROM users WHERE student_id = %s", (student_id,))
         row = cur.fetchone()
@@ -191,7 +192,7 @@ def get_or_create_user(userinfo: dict) -> dict:
             )
             updated_row = cur.fetchone()
             conn.commit()
-            return _serialize_user(updated_row)
+            return _serialize_user(updated_row), False
 
         cur.execute(
             """INSERT INTO users (student_id, name, email, casdoor_sub, casdoor_name, role)
@@ -201,7 +202,7 @@ def get_or_create_user(userinfo: dict) -> dict:
         )
         new_row = cur.fetchone()
         conn.commit()
-        return _serialize_user(new_row)
+        return _serialize_user(new_row), True
     except psycopg2.IntegrityError:
         conn.rollback()
         raise HTTPException(status_code=409, detail="本地用户创建失败：学号或 Casdoor 账号已存在")

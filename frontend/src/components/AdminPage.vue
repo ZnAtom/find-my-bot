@@ -118,6 +118,52 @@
             </el-table>
           </el-tab-pane>
 
+          <el-tab-pane label="系统通知" name="notify">
+            <div class="notify-panel">
+              <el-form :model="notifyForm" label-position="top" class="notify-form">
+                <el-form-item label="通知标题" required>
+                  <el-input v-model="notifyForm.title" placeholder="例如：系统维护通知" maxlength="200" />
+                </el-form-item>
+                <el-form-item label="通知内容">
+                  <el-input
+                    v-model="notifyForm.message"
+                    type="textarea"
+                    :rows="4"
+                    placeholder="输入通知正文…"
+                  />
+                </el-form-item>
+                <el-form-item label="发送范围">
+                  <el-radio-group v-model="notifyForm.scope" @change="notifyForm.user_ids = []">
+                    <el-radio-button value="all">全部用户</el-radio-button>
+                    <el-radio-button value="selected">指定用户</el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
+                <el-form-item v-if="notifyForm.scope === 'selected'" label="选择用户">
+                  <el-select
+                    v-model="notifyForm.user_ids"
+                    multiple
+                    filterable
+                    placeholder="搜索并选择用户"
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="u in users"
+                      :key="u.id"
+                      :label="`${u.name || u.student_id} (ID:${u.id})`"
+                      :value="u.id"
+                    />
+                  </el-select>
+                </el-form-item>
+                <el-form-item>
+                  <el-button type="primary" :loading="notifySending" @click="sendNotification">
+                    <el-icon><Promotion /></el-icon>
+                    发送通知
+                  </el-button>
+                </el-form-item>
+              </el-form>
+            </div>
+          </el-tab-pane>
+
           <el-tab-pane label="用户" name="users">
             <el-table :data="users" v-loading="loadingUsers">
               <el-table-column prop="id" label="ID" width="70" />
@@ -232,8 +278,9 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Box, CircleCheck, HelpFilled, Refresh, User } from '@element-plus/icons-vue'
+import { Box, CircleCheck, HelpFilled, Promotion, Refresh, User } from '@element-plus/icons-vue'
 import { lostItemsApi, statsApi, usersApi, claimsApi } from '../api'
+import api from '../api'
 import { useUserStore } from '../stores/user'
 
 const userStore = useUserStore()
@@ -262,6 +309,42 @@ const editForm = reactive({
   status: 'active',
   contact_visibility: 'private',
 })
+
+const notifyForm = reactive({
+  title: '',
+  message: '',
+  scope: 'all',
+  user_ids: [],
+})
+const notifySending = ref(false)
+
+const sendNotification = async () => {
+  if (!notifyForm.title.trim()) {
+    ElMessage.warning('请输入通知标题')
+    return
+  }
+  notifySending.value = true
+  try {
+    const body = {
+      title: notifyForm.title.trim(),
+      message: notifyForm.message.trim() || null,
+      user_ids: notifyForm.scope === 'selected' && notifyForm.user_ids.length > 0
+        ? notifyForm.user_ids
+        : null,
+    }
+    const res = await api.post('/admin/notifications', body)
+    ElMessage.success(`通知已发送，覆盖 ${res.data.sent_count} 位用户`)
+    notifyForm.title = ''
+    notifyForm.message = ''
+    notifyForm.scope = 'all'
+    notifyForm.user_ids = []
+  } catch (e) {
+    const detail = e.response?.data?.detail || '发送失败'
+    ElMessage.error(typeof detail === 'string' ? detail : '发送失败')
+  } finally {
+    notifySending.value = false
+  }
+}
 
 const statCards = computed(() => [
   { label: '正在寻找', value: stats.value.lost_count || 0, icon: HelpFilled, cls: 'danger' },
@@ -555,5 +638,13 @@ const getStatusText = (row) => {
   .admin-panel {
     padding: 0 12px 14px;
   }
+}
+
+.notify-panel {
+  padding: 16px 0;
+}
+
+.notify-form {
+  max-width: 640px;
 }
 </style>
