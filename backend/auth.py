@@ -193,13 +193,11 @@ def get_or_create_user(userinfo: dict) -> dict:
             conn.commit()
             return _serialize_user(updated_row)
 
-        cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM users")
-        next_id = cur.fetchone()[0]
         cur.execute(
-            """INSERT INTO users (id, student_id, name, email, casdoor_sub, casdoor_name, role)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """INSERT INTO users (student_id, name, email, casdoor_sub, casdoor_name, role)
+               VALUES (%s, %s, %s, %s, %s, %s)
                RETURNING *""",
-            (next_id, student_id, name, email, casdoor_sub, userinfo.get("name"), "user"),
+            (student_id, name, email, casdoor_sub, userinfo.get("name"), "user"),
         )
         new_row = cur.fetchone()
         conn.commit()

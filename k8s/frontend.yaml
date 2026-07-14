@@ -14,6 +14,7 @@ spec:
       labels:
         app: foundit-frontend
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: frontend
           image: ghcr.io/znatom/find-my-bot-frontend:latest

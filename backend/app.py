@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import Optional, List
+from time import monotonic
 import httpx
 import base64
 import json
@@ -13,7 +14,6 @@ import psycopg2.extras
 import os
 import uuid
 import aiofiles
-import httpx
 from functools import lru_cache
 from urllib.parse import unquote, urlparse
 from auth import (
@@ -125,6 +125,10 @@ SCHOOL_API_KEY = os.environ.get("SCHOOL_API_KEY")
 SCHOOL_VISION_MODEL = os.environ.get("SCHOOL_VISION_MODEL", os.environ.get("SCHOOL_MODEL", "qwen-instruct"))
 VISION_MAX_IMAGES = int(os.environ.get("VISION_MAX_IMAGES", "10"))
 VISION_TIMEOUT_SECONDS = float(os.environ.get("VISION_TIMEOUT_SECONDS", "60"))
+UPLOAD_RATE_LIMIT_COUNT = int(os.environ.get("UPLOAD_RATE_LIMIT_COUNT", "20"))
+UPLOAD_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("UPLOAD_RATE_LIMIT_WINDOW_SECONDS", "3600"))
+IMAGE_ANALYSIS_RATE_LIMIT_COUNT = int(os.environ.get("IMAGE_ANALYSIS_RATE_LIMIT_COUNT", "10"))
+IMAGE_ANALYSIS_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("IMAGE_ANALYSIS_RATE_LIMIT_WINDOW_SECONDS", "3600"))
 
 ITEM_TYPE_OPTIONS = {"证件卡片", "电子产品", "衣物鞋帽", "学习用品", "钱包钥匙", "其他"}
 
@@ -155,6 +159,31 @@ IMAGE_ANALYSIS_PROMPT = """你是“校园失物招领图片信息提取器”�
 
 # 挂载上传目录为静态文件服务
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+_rate_limit_buckets: dict[tuple[str, str], list[float]] = {}
+
+
+def _client_rate_key(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_rate_limit(request: Request, bucket: str, max_requests: int, window_seconds: int):
+    if max_requests <= 0 or window_seconds <= 0:
+        return
+
+    now = monotonic()
+    key = (bucket, _client_rate_key(request))
+    window_start = now - window_seconds
+    requests = [timestamp for timestamp in _rate_limit_buckets.get(key, []) if timestamp > window_start]
+
+    if len(requests) >= max_requests:
+        raise HTTPException(status_code=429, detail="操作过于频繁，请稍后再试")
+
+    requests.append(now)
+    _rate_limit_buckets[key] = requests
 
 
 @app.get("/api/campus-map/tiles/{zoom}/tile{x}_{y}.png")
@@ -195,6 +224,7 @@ async def proxy_campus_map_tile(zoom: int, x: int, y: int):
 async def upload_image(request: Request, file: UploadFile = File(...)):
     """上传图片，返回可访问的 URL"""
     verify_csrf_origin(request)
+    _check_rate_limit(request, "upload", UPLOAD_RATE_LIMIT_COUNT, UPLOAD_RATE_LIMIT_WINDOW_SECONDS)
 
     # 校验文件扩展名（统一小写）
     original_name = file.filename or "unknown"
@@ -364,6 +394,41 @@ def _image_url_to_path(url: str) -> Optional[str]:
     return candidate if os.path.isfile(candidate) else None
 
 
+def _normalize_uploaded_image_urls(image_url: Optional[str]) -> Optional[str]:
+    if not image_url:
+        return None
+
+    normalized_urls = []
+    for raw_url in image_url.split(","):
+        value = raw_url.strip()
+        if not value:
+            continue
+
+        parsed = urlparse(value)
+        if parsed.scheme or parsed.netloc:
+            raise HTTPException(status_code=400, detail="物品图片只能使用本站上传的图片")
+
+        path = unquote(value)
+        if not path.startswith("/uploads/"):
+            raise HTTPException(status_code=400, detail="物品图片只能使用本站上传的图片")
+
+        filename = path.removeprefix("/uploads/")
+        if not filename or "/" in filename or "\\" in filename or filename in (".", ".."):
+            raise HTTPException(status_code=400, detail="图片路径无效")
+
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail="图片类型无效")
+
+        normalized_url = f"/uploads/{filename}"
+        if not _image_url_to_path(normalized_url):
+            raise HTTPException(status_code=400, detail="图片不存在或路径无效")
+
+        normalized_urls.append(normalized_url)
+
+    return ",".join(normalized_urls) if normalized_urls else None
+
+
 def _iter_image_paths(image_url: Optional[str]) -> list[str]:
     if not image_url:
         return []
@@ -499,6 +564,12 @@ async def _call_school_image_analysis(image_refs: list[str]) -> ImageAnalysisRes
 @app.post("/api/image-analysis", response_model=ImageAnalysisResponse)
 async def analyze_uploaded_images(payload: ImageAnalysisRequest, request: Request):
     verify_csrf_origin(request)
+    _check_rate_limit(
+        request,
+        "image-analysis",
+        IMAGE_ANALYSIS_RATE_LIMIT_COUNT,
+        IMAGE_ANALYSIS_RATE_LIMIT_WINDOW_SECONDS,
+    )
 
     image_urls = [url for url in payload.image_urls if url and url.strip()]
     if not image_urls:
@@ -1400,6 +1471,7 @@ def match_check(item: MatchCheckRequest, request: Request, limit: int = 5):
 def create_lost_item(item: LostItemCreate, request: Request):
     verify_csrf_origin(request)
     direction, status = _resolve_create_state(item.direction, item.status, item.post_type)
+    image_url = _normalize_uploaded_image_urls(item.image_url)
     current_user = get_optional_user(request)
     has_contact = any(none_if_empty(value) for value in (item.contact_phone, item.contact_qq, item.contact_email))
     if direction == "lost" and not current_user:
@@ -1429,21 +1501,17 @@ def create_lost_item(item: LostItemCreate, request: Request):
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, item.image_url)
+    vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, image_url)
     try:
-        # 显式获取下一个 ID（序列权限变通方案）
-        cur.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM lost_items")
-        next_id = cur.fetchone()[0]
-
         cur.execute(
             """INSERT INTO lost_items
-               (id, item_name, item_type, description, location, storage_location, lost_time, direction, status, contact_visibility,
+               (item_name, item_type, description, location, storage_location, lost_time, direction, status, contact_visibility,
                 image_url, contact_person, contact_phone, contact_qq, contact_email, user_id, vector)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
-            (next_id, item.item_name, none_if_empty(item.item_type),
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
+            (item.item_name, none_if_empty(item.item_type),
              none_if_empty(item.description), none_if_empty(item.location),
              storage_location, none_if_empty(item.lost_time), direction, status, contact_visibility,
-             none_if_empty(item.image_url), contact_person,
+             image_url, contact_person,
              none_if_empty(item.contact_phone), none_if_empty(item.contact_qq), none_if_empty(item.contact_email),
              current_user["id"] if current_user else None,
              none_if_empty(vector))
@@ -1451,11 +1519,10 @@ def create_lost_item(item: LostItemCreate, request: Request):
         conn.commit()
         new_item = cur.fetchone()
         return serialize_row(new_item)
-    except Exception as e:
+    except Exception:
         conn.rollback()
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=400, detail=f"创建失物信息失败: {e}")
+        logging.exception("Create lost item failed")
+        raise HTTPException(status_code=400, detail="创建失物信息失败")
     finally:
         cur.close()
         release_db_connection(conn)
@@ -1511,13 +1578,14 @@ def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
             update_fields.append("contact_email = %s")
             params.append(none_if_empty(item.contact_email))
         if item.image_url is not None:
+            image_url = _normalize_uploaded_image_urls(item.image_url)
             update_fields.append("image_url = %s")
-            params.append(none_if_empty(item.image_url))
+            params.append(image_url)
         
         if not update_fields:
             raise HTTPException(status_code=400, detail="没有要更新的字段")
 
-        if item.item_name or item.description or item.location or item.found_time or item.image_url:
+        if item.item_name or item.description or item.location or item.found_time or item.image_url is not None:
             cur.execute(
                 "SELECT item_name, location, lost_time, description, image_url FROM lost_items WHERE id = %s",
                 (item_id,),
@@ -1528,7 +1596,7 @@ def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
                 new_location = item.location or row["location"]
                 new_time = item.found_time or row["lost_time"]
                 new_desc = item.description or row["description"]
-                new_img = item.image_url or row["image_url"]
+                new_img = _normalize_uploaded_image_urls(item.image_url) if item.image_url is not None else row["image_url"]
                 vector = _build_vector(new_name, new_location, str(new_time) if new_time else "", new_desc, new_img)
                 update_fields.append("vector = %s::vector")
                 params.append(vector)

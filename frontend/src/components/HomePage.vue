@@ -66,7 +66,7 @@
           <div v-else-if="lostItems.length" class="compact-list">
             <button v-for="item in lostItems" :key="item.id" class="compact-item" type="button" @click="goDetail(item.id)">
               <span class="thumb">
-                <img v-if="firstImage(item.image_url)" :src="resolveImageUrl(firstImage(item.image_url))" alt="" />
+                <img v-if="firstImage(item.image_url)" :src="firstImage(item.image_url)" alt="" />
                 <el-icon v-else><Picture /></el-icon>
               </span>
               <span class="compact-copy">
@@ -94,7 +94,7 @@
           <div v-else-if="foundItems.length" class="compact-list">
             <button v-for="item in foundItems" :key="item.id" class="compact-item" type="button" @click="goDetail(item.id)">
               <span class="thumb">
-                <img v-if="firstImage(item.image_url)" :src="resolveImageUrl(firstImage(item.image_url))" alt="" />
+                <img v-if="firstImage(item.image_url)" :src="firstImage(item.image_url)" alt="" />
                 <el-icon v-else><Picture /></el-icon>
               </span>
               <span class="compact-copy">
@@ -115,7 +115,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { CircleCheck, Collection, Picture, Search, Warning } from '@element-plus/icons-vue'
-import { lostItemsApi, resolveImageUrl } from '../api'
+import { firstSafeImageUrl, lostItemsApi } from '../api'
 
 const searchQuery = ref('')
 const lostItems = ref([])
@@ -144,8 +144,7 @@ const loadLatestItems = async () => {
 }
 
 const firstImage = (url) => {
-  if (!url) return ''
-  return url.split(',').map(v => v.trim()).filter(Boolean)[0] || ''
+  return firstSafeImageUrl(url)
 }
 
 const goDetail = (id) => {

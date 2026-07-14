@@ -85,6 +85,13 @@ ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS contact_visibility VARCHAR(20) N
 ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS contact_email VARCHAR(100);
 ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
+-- 同步旧数据迁移后的 SERIAL sequence，避免从 MAX(id)+1 切回自增时发生主键冲突。
+SELECT setval(pg_get_serial_sequence('users', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM users), false);
+SELECT setval(pg_get_serial_sequence('lost_items', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM lost_items), false);
+SELECT setval(pg_get_serial_sequence('notifications', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM notifications), false);
+SELECT setval(pg_get_serial_sequence('claim_requests', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM claim_requests), false);
+SELECT setval(pg_get_serial_sequence('match_records', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM match_records), false);
+
 -- 开启 HNSW 高维向量索引，加速匹配效率（1536 维 < pgvector HNSW 上限 2000）
 CREATE INDEX IF NOT EXISTS idx_lost_items_vector ON lost_items USING hnsw (vector vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_lost_items_status ON lost_items(status);

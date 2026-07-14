@@ -44,12 +44,11 @@ spec:
       labels:
         app: foundit-backend
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: backend
           image: ghcr.io/znatom/find-my-bot-backend:latest
           env:
-            - name: DATABASE_URL
-              value: "postgresql://appuser:password@foundit-db:5432/lostfound"
             - name: DB_USER
               value: "appuser"
             - name: DB_PASSWORD
@@ -72,6 +71,14 @@ spec:
                 secretKeyRef:
                   name: foundit-genai
                   key: school_api_key
+            - name: UPLOAD_RATE_LIMIT_COUNT
+              value: "20"
+            - name: UPLOAD_RATE_LIMIT_WINDOW_SECONDS
+              value: "3600"
+            - name: IMAGE_ANALYSIS_RATE_LIMIT_COUNT
+              value: "10"
+            - name: IMAGE_ANALYSIS_RATE_LIMIT_WINDOW_SECONDS
+              value: "3600"
             - name: HF_HOME
               value: "/root/.cache/huggingface"
             - name: CASDOOR_ENDPOINT
