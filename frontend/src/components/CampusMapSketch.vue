@@ -838,29 +838,27 @@ function projectPolyline(points = []) {
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
 }
 
-@media (prefers-color-scheme: dark) {
-  .map-fallback-note {
-    background: rgba(69, 45, 12, 0.92);
-  }
+:global(html.dark) .map-fallback-note {
+  background: rgba(69, 45, 12, 0.92);
+}
 
-  .campus-boundary {
-    fill: rgba(30, 41, 59, 0.72);
-    stroke: rgba(148, 163, 184, 0.42);
-  }
+:global(html.dark) .campus-boundary {
+  fill: rgba(42, 42, 42, 0.82);
+  stroke: rgba(169, 173, 181, 0.38);
+}
 
-  .campus-road polyline {
-    stroke: rgba(148, 163, 184, 0.26);
-  }
+:global(html.dark) .campus-road polyline {
+  stroke: rgba(169, 173, 181, 0.24);
+}
 
-  .area-label-text,
-  .campus-building-label text {
-    stroke: rgba(15, 23, 42, 0.92);
-  }
+:global(html.dark) .area-label-text,
+:global(html.dark) .campus-building-label text {
+  stroke: rgba(27, 27, 27, 0.92);
+}
 
-  .campus-building.selected,
-  .campus-building.hit {
-    filter: brightness(1.08);
-  }
+:global(html.dark) .campus-building.selected,
+:global(html.dark) .campus-building.hit {
+  filter: brightness(1.08);
 }
 
 @media (max-width: 720px) {

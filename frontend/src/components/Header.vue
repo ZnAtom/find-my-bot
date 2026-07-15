@@ -2,7 +2,7 @@
   <el-header class="app-header">
     <div class="header-inner">
       <button class="brand-button" type="button" @click="navigate('home')" aria-label="FoundIt 首页">
-        <img class="brand-logo" :src="logoUrl" alt="FoundIt" />
+        <img class="brand-logo" :src="logoSrc" alt="FoundIt" />
       </button>
 
       <nav class="desktop-nav" aria-label="主导航">
@@ -195,6 +195,7 @@ import { useUserStore } from '../stores/user'
 import { notificationsApi } from '../api'
 import { theme, toggleTheme } from '../theme'
 import logoUrl from '../assets/foundit-logo.svg'
+import logoDarkUrl from '../assets/foundit-logo-dark.svg'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -219,6 +220,7 @@ const baseItems = computed(() => [
 const desktopItems = computed(() => baseItems.value)
 const mobileItems = computed(() => baseItems.value)
 const isDarkTheme = computed(() => theme.value === 'dark')
+const logoSrc = computed(() => isDarkTheme.value ? logoDarkUrl : logoUrl)
 const themeToggleLabel = computed(() => isDarkTheme.value ? '切换到亮色模式' : '切换到黑暗模式')
 
 const userInitial = computed(() => {
@@ -369,7 +371,7 @@ onMounted(loadUnreadCount)
 
 .nav-link:hover,
 .nav-link.active {
-  color: var(--foundit-blue);
+  color: var(--accent-soft-text);
   background: var(--accent-soft-hover);
   border-color: var(--accent-soft-border);
 }
@@ -432,7 +434,7 @@ onMounted(loadUnreadCount)
 
 .notification-button:hover,
 .theme-toggle-button:hover {
-  color: var(--foundit-blue);
+  color: var(--accent-soft-text);
   border-color: var(--accent-soft-border);
   background: var(--accent-soft-hover);
 }
