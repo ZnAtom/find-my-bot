@@ -20,4 +20,4 @@ images:
   newTag: sha-c17bb7ad32a832893db723b8e14a53e5796fb1f5
 - name: ghcr.io/znatom/find-my-bot-frontend
   newName: ghcr.nju.edu.cn/znatom/find-my-bot-frontend
-  newTag: sha-6b67a60f9cfccd46fe553634f18bf20c4b8c9871
+  newTag: sha-628b4017adc572676a7d843cc46d2329a9760e37
