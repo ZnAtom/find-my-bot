@@ -120,17 +120,15 @@
 
                 <el-form-item :label="locationLabel" prop="location" class="location-form-item">
                   <div class="compact-location-row">
-                    <el-cascader
-                      v-model="selectedLocationPath"
+                    <el-autocomplete
+                      v-model="formData.location"
                       class="location-cascader"
-                      :options="campusLocationOptions"
-                      :props="locationCascaderProps"
-                      filterable
-                      clearable
-                      :show-all-levels="true"
-                      :placeholder="locationSearchPlaceholder"
+                      :fetch-suggestions="fetchLocationSuggestions"
+                      :placeholder="isFound ? '搜索校园地点或直接输入捡到地点' : '搜索校园地点或直接输入丢失地点'"
                       size="large"
-                      @change="handleLocationChange"
+                      clearable
+                      :trigger-on-focus="true"
+                      @select="handleLocationSelect"
                     />
                     <el-tooltip
                       content="功能测试中，结果可能不准确，请以手动选择为准"
@@ -328,10 +326,10 @@ import { Plus, User, Phone, ChatDotRound, Warning, CircleCheck, Message, MapLoca
 import { apiBase, lostItemsApi, uploadApi } from '../api'
 import { useUserStore } from '../stores/user'
 import {
-  campusLocationTree,
-  findCampusLocationByPathCodes,
+  campusLocationEntries,
   findNearestCampusLocation,
   formatDistanceMeters,
+  searchCampusLocations,
 } from '../data/campusLocations'
 
 const userStore = useUserStore()
@@ -349,7 +347,6 @@ const matchDialogVisible = ref(false)
 const matchResults = ref([])
 const leaveContact = ref(false)
 const locating = ref(false)
-const selectedLocationPath = ref([])
 
 const steps = [
   { title: '图片识别', desc: '图片、名称、分类' },
@@ -396,19 +393,9 @@ const contactStepDescription = computed(() => (
 const locationLabel = computed(() => isFound.value ? '捡到地点（选填）' : '丢失地点')
 const locationSelectTip = computed(() => (
   isFound.value
-    ? '捡到地点可留空，但现在存放处为必填。'
+    ? ''
     : '可搜索校园地点，也可以使用当前位置自动匹配最近地点。'
 ))
-const locationSearchPlaceholder = computed(() => (
-  isFound.value ? '按区域选择或搜索捡到地点' : '按区域选择或搜索丢失地点'
-))
-const campusLocationOptions = computed(() => campusLocationTree[0]?.children || campusLocationTree)
-const locationCascaderProps = {
-  value: 'value',
-  label: 'label',
-  children: 'children',
-  emitPath: true,
-}
 const timeLabel = computed(() => isFound.value ? '捡到时间' : '丢失时间')
 const submitButtonText = computed(() => isFound.value ? '发布招领' : '发布寻物')
 const contactMethodCount = computed(() => [formData.contact_phone, formData.contact_qq, formData.contact_email].filter(Boolean).length)
@@ -576,24 +563,23 @@ const fillFromProfile = (targetField, userField) => {
   ElMessage.success('已自动填写')
 }
 
-const handleLocationChange = (pathCodes = selectedLocationPath.value) => {
-  if (!Array.isArray(pathCodes) || pathCodes.length === 0) {
-    formData.location = ''
-    formRef.value?.clearValidate(['location'])
+const fetchLocationSuggestions = (queryString, callback) => {
+  if (!queryString || queryString.trim().length < 1) {
+    callback(campusLocationEntries.slice(0, 12).map(e => ({ value: e.pathLabel })))
     return
   }
+  const results = searchCampusLocations(queryString, 'all', 12)
+  callback(results.map(e => ({ value: e.pathLabel })))
+}
 
-  const campusCode = campusLocationTree[0]?.value
-  const fullPathCodes = campusCode ? [campusCode, ...pathCodes] : pathCodes
-  const entry = findCampusLocationByPathCodes(fullPathCodes)
-  formData.location = entry?.pathLabel || ''
+const handleLocationSelect = (item) => {
+  formData.location = item.value
   formRef.value?.clearValidate(['location'])
 }
 
 const applyLocationEntry = (entry) => {
   if (!entry) return
   formData.location = entry.pathLabel || entry.label || ''
-  selectedLocationPath.value = Array.isArray(entry.pathCodes) ? entry.pathCodes.slice(1) : []
   formRef.value?.clearValidate(['location'])
 }
 
