@@ -1,55 +1,210 @@
-<div align="center">
-  <h1>🔍 FoundIt (原 find-my-bot)</h1>
-  <p><strong>校园统一失物招领 AI Agent</strong></p>
+# FoundIt
 
-  <!-- 徽章区域 -->
-  <p>
-    <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License">
-    <img src="https://img.shields.io/badge/Vue-3.x-4FC08D?logo=vuedotjs" alt="Vue 3">
-    <img src="https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi" alt="FastAPI">
-    <img src="https://img.shields.io/badge/PostgreSQL-16.x-336791?logo=postgresql" alt="PostgreSQL">
-  </p>
-</div>
+校园失物招领平台，支持寻物/招领发布、语义搜索、多图上传、AI 图片识别、认领流程、通知中心和管理员后台。
 
----
+## 项目概览
 
-## 🌟 简介
+FoundIt 当前是一个完整的前后端分离项目：
 
-**FoundIt** 是一个基于人工智能驱动的校园级失物招领解决方案。
-它将计算机视觉与自然语言处理模型深度集成，通过将失物信息和招领信息转化为高维语义向量，实现超越传统字面关键字匹配的**语义级搜索**。
-不论你是想找回遗失的“白色 Airpods”，还是登记捡到的“苹果无线耳机”，FoundIt 都能在瞬间智能匹配它们。
+- 前端使用 Vue 3 + Vite + Element Plus，提供首页、列表、详情、发布、个人中心和管理台。
+- 后端使用 FastAPI + PostgreSQL + pgvector，负责认证、记录管理、语义检索、图片上传、通知和认领流程。
+- 向量检索使用 `Qwen/Qwen3-VL-Embedding-2B`，支持文本和图片混合编码，数据库侧使用 pgvector HNSW 索引。
+- 图片自动填表接入上海科技大学 GenAI 图像理解接口。
+- 部署层同时提供 Docker Compose 本地方案和 `k8s/` 生产清单。
 
-## ✨ 核心特性
+## 当前功能
 
-- 🧠 **AI 语义搜索**：采用 `Qwen3-VL-Embedding-2B` 模型计算向量，利用 `pgvector` 在数据库层实现毫秒级余弦相似度匹配。
-- 🖼️ **多模态支持**：文本描述与物品图片皆可转化为高维向量。
-- ⚡ **现代化技术栈**：前后端分离架构，极致性能。
-- 🤖 **QQ 机器人集成**：支持通过 NapCat + AstrBot 在群聊中无缝接入查询（开发中）。
-- 🚀 **云原生就绪**：提供一键式 Docker 部署，以及针对 Kubernetes 的全自动 GitOps (ArgoCD) 流水线。
+- 寻物和招领双流程发布。
+- 关键词搜索和语义搜索。
+- 多张图片上传，并基于图片自动提取物品名称、分类和描述。
+- 详情页按权限显示联系方式，支持 `private`、`logged_in`、`claimed`、`public` 四种可见性。
+- 登录用户可提交认领或联系申请，系统自动生成站内通知。
+- Casdoor OAuth 登录、个人资料维护、我的发布列表。
+- 管理员后台支持物品管理、用户角色管理、申请查看和系统通知发送。
+- 校园地点选择和校园地图瓦片代理。
+- 可选 QQ 机器人目录与 compose 预留配置。
 
-## 🛠️ 技术栈
+## 技术栈
 
-- **前端 (Frontend)**: Vue 3, Vite, Element Plus
-- **后端 (Backend)**: FastAPI, Python 3.12, Sentence Transformers, Uvicorn
-- **数据库 (Database)**: PostgreSQL 16 + pgvector (向量扩展)
-- **部署 (Deployment)**: Docker / Docker Compose / Kubernetes (ArgoCD)
+- 前端：Vue 3、Vue Router、Pinia、Element Plus、Axios、Vitest
+- 后端：FastAPI、Uvicorn、psycopg2、Sentence Transformers、PyTorch
+- 数据库：PostgreSQL 16、pgvector
+- 部署：Docker Compose、Kubernetes、ArgoCD 清单
 
-## 🚀 部署与快速开始
+## 目录结构
 
-本作支持多种部署方式，满足不同规模与场景的需求：
+```text
+.
+|-- backend/        FastAPI 服务、数据库 schema、迁移脚本、测试
+|-- frontend/       Vue 3 前端应用
+|-- doc/            架构、接口、部署、业务流程等补充文档
+|-- k8s/            Kubernetes 部署与运维清单
+|-- proxy/          辅助代理脚本
+|-- qqbot/          NapCat / AstrBot 预留配置
+|-- docker-compose.yml
+|-- .env.example
+`-- README.md
+```
 
-- **📦 Docker 一键启动**：适合本地开发、评估或无 K8s 环境的协作者，详细教程请参考 [👉 Docker 部署指南](doc/getting-started.md)。
-- **☁️ Kubernetes 生产级 GitOps**：适合大型生产环境，无需人工干预即可在每次 Push 后自动构建并零停机滚动更新集群。配置说明见 [👉 K8s 部署指南](doc/getting-started.md#13-kubernetes-k8s-生产部署全自动-gitops)。
+## 快速开始
 
-关于系统更深层次的架构设计、数据流向以及模型推理策略，请阅读 [👉 架构设计文档](doc/architecture.md)。
+### 1. 准备环境
 
-## 🤝 参与贡献
+- Docker Desktop 或 Docker Engine + Docker Compose
+- 如果要本地运行前后端而不是全量 Docker：
+  - Python 3.12+
+  - Node.js 22+
 
-我们非常欢迎来自社区的反馈和贡献！在提交代码前，请务必阅读我们的 [贡献指南 (CONTRIBUTING.md)](CONTRIBUTING.md)。
+### 2. 配置环境变量
 
-- 发现 Bug 或有绝妙的新功能点子？请提交 [Issue](https://github.com/ZnAtom/find-my-bot/issues/new/choose)。
-- 请遵守我们的 [社区行为准则 (CODE_OF_CONDUCT.md)](CODE_OF_CONDUCT.md)。
+复制模板：
 
-## 📄 协议
+```bash
+cp .env.example .env
+```
 
-本项目基于 **MIT License** 开源。详情请参阅 [LICENSE](LICENSE) 文件。
+建议至少确认以下配置：
+
+| 变量 | 用途 |
+| --- | --- |
+| `CASDOOR_CLIENT_ID` / `CASDOOR_CLIENT_SECRET` | Casdoor 登录 |
+| `CASDOOR_REDIRECT_URI` | OAuth 回调地址 |
+| `FRONTEND_BASE_URL` | 前端访问地址 |
+| `JWT_SECRET` | 会话签名密钥，至少 32 字符 |
+| `SCHOOL_API_KEY` | 图片识别服务 |
+| `CORS_ORIGINS` | CORS 白名单 |
+| `CSRF_TRUSTED_ORIGINS` | CSRF 来源白名单 |
+
+说明：
+
+- 只想先跑匿名浏览、列表和基础发布，认证相关变量可以后补。
+- 要使用登录、个人中心、管理员后台，必须正确配置 Casdoor 和 `JWT_SECRET`。
+- 要使用 AI 图片识别，必须配置 `SCHOOL_API_KEY`。
+
+### 3. 使用 Docker Compose 启动
+
+```bash
+docker compose up -d --build
+```
+
+服务地址：
+
+| 服务 | 地址 |
+| --- | --- |
+| 前端 | http://localhost:5173 |
+| 后端 API | http://localhost:8000/api |
+| FastAPI 文档 | http://localhost:8000/docs |
+| PostgreSQL | `127.0.0.1:5433` |
+
+启动时会自动执行：
+
+- `backend/schema.sql`
+- `backend/migrate_auth.py`
+- `backend/migrate_item_state.py`
+- `backend/migrate_flow_fields.py`
+
+首次启动后端时，嵌入模型可能需要下载，耗时取决于网络和机器性能。
+
+## 本地开发
+
+### 只启动数据库
+
+```bash
+docker compose up -d db
+```
+
+### 本地运行后端
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+本地后端默认读取项目根目录的 `.env`。如果数据库跑在 compose 中，通常需要：
+
+- `DB_HOST=127.0.0.1`
+- `DB_PORT=5433`
+
+### 本地运行前端
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+开发环境下，Vite 会把 `/api` 和 `/uploads` 代理到 `http://127.0.0.1:8000`。
+
+## 业务规则
+
+- 发布寻物记录需要登录，并至少提供一种联系方式。
+- 发布招领记录必须填写当前存放处。
+- 匿名用户可以发布招领，但不能填写联系方式，且发布后不能自行编辑或删除。
+- 记录图片只能使用本站 `/uploads` 目录下已上传的文件，不能直接引用第三方图片 URL。
+- 发布前前端会调用 `/api/match-check` 做一次相似记录提示。
+- 联系方式默认受权限控制，只有满足可见条件的用户才能看到完整信息。
+
+## 测试
+
+前端：
+
+```bash
+cd frontend
+npm test
+```
+
+后端：
+
+```bash
+cd backend
+pytest
+```
+
+## 部署与运维
+
+### Docker Compose
+
+适合本地开发、演示和联调，根目录 `docker-compose.yml` 默认启动：
+
+- `db`
+- `backend`
+- `frontend`
+
+### Kubernetes
+
+`k8s/` 目录已包含以下资源：
+
+- `backend.yaml`、`frontend.yaml`、`db.yaml`
+- `ingress.yaml`
+- `db-network-policy.yaml`
+- `db-backup.yaml`
+- `data-retention-cronjob.yaml`
+- `argocd-app.yaml`
+
+### QQ 机器人
+
+根目录 `docker-compose.yml` 中预留了 `napcat` 和 `astrbot` 配置，默认注释。相关文件位于 `qqbot/`。
+
+## 常用命令
+
+```bash
+docker compose ps
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose down
+docker compose down -v
+docker compose exec db psql -U appuser -d lostfound
+```
+
+## 相关文档
+
+- [快速部署指南](doc/getting-started.md)
+- [架构设计](doc/architecture.md)
+- [接口说明](doc/api.md)
+- [数据库与安全策略](doc/database-security.md)
+- [业务流程梳理](doc/业务流程梳理.md)
+
+## License
+
+本项目基于 [MIT License](LICENSE) 开源。
