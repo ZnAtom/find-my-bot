@@ -308,6 +308,7 @@ docker compose exec db psql -U appuser -d lostfound
 
 - [快速部署指南](doc/getting-started.md)
 - [架构设计](doc/architecture.md)
+- [搜索与匹配计算说明](doc/search-retrieval.md)
 - [接口说明](doc/api.md)
 - [数据库与安全策略](doc/database-security.md)
 - [业务流程梳理](doc/业务流程梳理.md)

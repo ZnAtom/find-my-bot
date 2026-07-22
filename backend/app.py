@@ -1540,7 +1540,8 @@ def get_lost_items(
     post_type: Optional[str] = None,
     item_type: Optional[str] = None,
     page: int = 1,
-    page_size: int = 20
+    page_size: int = 20,
+    all_items: bool = Query(False, alias="all"),
 ):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -1563,9 +1564,10 @@ def get_lost_items(
     cur.execute(count_query, params)
     total = cur.fetchone()['total']
     
-    # 查询分页数据
-    query = f"SELECT * FROM lost_items {where_clause} ORDER BY created_at DESC LIMIT %s OFFSET %s"
-    params.extend([page_size, (page - 1) * page_size])
+    query = f"SELECT * FROM lost_items {where_clause} ORDER BY created_at DESC"
+    if not all_items:
+        query += " LIMIT %s OFFSET %s"
+        params.extend([page_size, (page - 1) * page_size])
     
     cur.execute(query, params)
     items = cur.fetchall()
@@ -1577,8 +1579,8 @@ def get_lost_items(
     return {
         "items": [serialize_item_for_user(item, current_user, claim_item_ids) for item in items],
         "total": total,
-        "page": page,
-        "page_size": page_size
+        "page": 1 if all_items else page,
+        "page_size": total if all_items else page_size,
     }
 
 class MatchCheckRequest(LostItemCreate):
@@ -1846,8 +1848,8 @@ def search_lost_items(
         item_type=item_type,
     )
     
-    search_query += " AND (item_name ILIKE %s OR description ILIKE %s OR location ILIKE %s)"
-    params.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
+    search_query += " AND (item_name ILIKE %s OR description ILIKE %s)"
+    params.extend([f"%{query}%", f"%{query}%"])
     
     search_query += " ORDER BY created_at DESC LIMIT %s"
     params.append(limit)

@@ -15,7 +15,7 @@
             v-model="searchQuery"
             size="large"
             class="main-search-input"
-            placeholder="输入物品、地点、颜色、品牌或完整描述"
+            placeholder="输入物品、颜色、品牌或完整描述"
             clearable
             @keyup.enter="handleSearch"
           >
@@ -121,7 +121,7 @@
         </div>
       </section>
 
-      <div v-if="!loading && total > pageSize && searchMode !== 'semantic'" class="pagination-row">
+      <div v-if="!loading && searched && searchMode === 'keyword' && total > pageSize" class="pagination-row">
         <el-pagination
           background
           :current-page="page"
@@ -195,7 +195,7 @@ const loadItems = async () => {
   loading.value = true
   allKeywordResults.value = []
   try {
-    const params = { page: page.value, page_size: pageSize.value }
+    const params = { all: true }
     if (filterType.value) params.item_type = filterType.value
     if (filterStatus.value) params.status = filterStatus.value
     if (filterDirection.value) params.direction = filterDirection.value
