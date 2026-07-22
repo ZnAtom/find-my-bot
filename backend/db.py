@@ -1,7 +1,12 @@
 import os
 import logging
+from pathlib import Path
+
 from psycopg2 import pool, OperationalError
+from dotenv import load_dotenv
 from fastapi import HTTPException
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 DB_CONFIG = {
     "dbname": os.environ.get("DB_NAME", "lostfound"),

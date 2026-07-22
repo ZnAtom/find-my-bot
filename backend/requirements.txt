@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 psycopg2-binary
+python-dotenv
 sentence-transformers[image]
 pillow
 python-multipart
@@ -10,3 +11,5 @@ aiofiles
 aiosmtplib
 pytest
 httpx
+jieba
+rank-bm25

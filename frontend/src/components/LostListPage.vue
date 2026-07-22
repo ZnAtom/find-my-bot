@@ -224,7 +224,7 @@ const handleSearch = async () => {
     if (searchMode.value === 'semantic' && searchQuery.value.trim()) {
       const res = await lostItemsApi.semanticSearch({
         query: searchQuery.value,
-        limit: pageSize.value,
+        limit: 10,
         item_type: filterType.value || undefined,
         status: filterStatus.value || undefined,
         direction: filterDirection.value || undefined,

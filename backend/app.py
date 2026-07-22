@@ -14,8 +14,10 @@ import psycopg2.extras
 import os
 import uuid
 import aiofiles
+import io
 from functools import lru_cache
 from urllib.parse import unquote, urlparse
+from PIL import Image, ImageOps
 from auth import (
     COOKIE_SECURE,
     NEXT_COOKIE,
@@ -38,6 +40,14 @@ from auth import (
 from embedding import encode_text, encode_multimodal, init_model
 from db import get_db_connection, release_db_connection
 from email_sender import send_match_email
+from retrieval import (
+    bm25_recall,
+    build_search_text,
+    filter_vector_recall,
+    hybrid_match_score,
+    rrf_fuse,
+    rule_rerank,
+)
 
 app = FastAPI(title="校园失物招领 API", version="1.0.0")
 
@@ -122,9 +132,21 @@ ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 SCHOOL_API_URL = os.environ.get("SCHOOL_API_URL", "https://genaiapi.shanghaitech.edu.cn/api/v1/start")
 SCHOOL_API_KEY = os.environ.get("SCHOOL_API_KEY")
-SCHOOL_VISION_MODEL = os.environ.get("SCHOOL_VISION_MODEL", os.environ.get("SCHOOL_MODEL", "qwen-instruct"))
+SCHOOL_VISION_MODEL = os.environ.get("SCHOOL_VISION_MODEL", os.environ.get("SCHOOL_MODEL", "qwen2.5-vl-instruct"))
 VISION_MAX_IMAGES = int(os.environ.get("VISION_MAX_IMAGES", "10"))
-VISION_TIMEOUT_SECONDS = float(os.environ.get("VISION_TIMEOUT_SECONDS", "60"))
+VISION_TIMEOUT_SECONDS = float(os.environ.get("VISION_TIMEOUT_SECONDS", "180"))
+VISION_CONNECT_TIMEOUT_SECONDS = float(os.environ.get("VISION_CONNECT_TIMEOUT_SECONDS", "10"))
+VISION_WRITE_TIMEOUT_SECONDS = float(os.environ.get("VISION_WRITE_TIMEOUT_SECONDS", "30"))
+VISION_POOL_TIMEOUT_SECONDS = float(os.environ.get("VISION_POOL_TIMEOUT_SECONDS", "10"))
+VISION_IMAGE_MAX_BYTES = int(os.environ.get("VISION_IMAGE_MAX_BYTES", str(10 * 1024 * 1024)))
+VISION_IMAGE_MAX_SIDE = int(os.environ.get("VISION_IMAGE_MAX_SIDE", "1600"))
+VISION_IMAGE_JPEG_QUALITY = int(os.environ.get("VISION_IMAGE_JPEG_QUALITY", "85"))
+RETRIEVAL_CANDIDATE_LIMIT = min(10, max(1, int(os.environ.get("RETRIEVAL_CANDIDATE_LIMIT", "10"))))
+BM25_WEIGHT = max(0.0, float(os.environ.get("BM25_WEIGHT", "0.7")))
+VECTOR_WEIGHT = max(0.0, float(os.environ.get("VECTOR_WEIGHT", "0.3")))
+VECTOR_SIMILARITY_THRESHOLD = float(os.environ.get("VECTOR_SIMILARITY_THRESHOLD", "0.48"))
+VECTOR_SIMILARITY_MAX_DROP = float(os.environ.get("VECTOR_SIMILARITY_MAX_DROP", "0.08"))
+RESULT_RELEVANCE_THRESHOLD = float(os.environ.get("RESULT_RELEVANCE_THRESHOLD", "0.65"))
 UPLOAD_RATE_LIMIT_COUNT = int(os.environ.get("UPLOAD_RATE_LIMIT_COUNT", "20"))
 UPLOAD_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("UPLOAD_RATE_LIMIT_WINDOW_SECONDS", "3600"))
 IMAGE_ANALYSIS_RATE_LIMIT_COUNT = int(os.environ.get("IMAGE_ANALYSIS_RATE_LIMIT_COUNT", "10"))
@@ -463,14 +485,40 @@ def _iter_image_paths(image_url: Optional[str]) -> list[str]:
 
 
 def _image_to_data_url(path: str) -> str:
-    size = os.path.getsize(path)
-    if size > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="单张图片超过学校图像理解接口 10MB 限制")
+    resample = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
+    target_sizes = [VISION_IMAGE_MAX_SIDE, 1280, 1024, 768]
+    target_qualities = [VISION_IMAGE_JPEG_QUALITY, 75, 65]
 
-    mime_type = mimetypes.guess_type(path)[0] or "image/jpeg"
-    with open(path, "rb") as image_file:
-        image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
-    return f"data:{mime_type};base64,{image_base64}"
+    try:
+        with Image.open(path) as source:
+            normalized = ImageOps.exif_transpose(source)
+            if normalized.mode != "RGB":
+                # 统一转成 JPEG，减少 Base64 请求体体积，并避免方向元数据影响模型识别。
+                if "A" in normalized.getbands():
+                    background = Image.new("RGB", normalized.size, (255, 255, 255))
+                    background.paste(normalized, mask=normalized.getchannel("A"))
+                    normalized = background
+                else:
+                    normalized = normalized.convert("RGB")
+
+            for max_side in target_sizes:
+                candidate = normalized.copy()
+                candidate.thumbnail((max_side, max_side), resample)
+
+                for quality in target_qualities:
+                    buffer = io.BytesIO()
+                    candidate.save(buffer, format="JPEG", quality=quality, optimize=True)
+                    encoded = buffer.getvalue()
+                    if len(encoded) <= VISION_IMAGE_MAX_BYTES:
+                        image_base64 = base64.b64encode(encoded).decode("utf-8")
+                        return f"data:image/jpeg;base64,{image_base64}"
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logging.warning("Prepare image for school analysis failed: %s", exc)
+        raise HTTPException(status_code=400, detail="图片处理失败，请尝试重新上传更清晰的图片")
+
+    raise HTTPException(status_code=400, detail="图片压缩后仍超过学校图像理解接口 10MB 限制")
 
 
 def _is_remote_image_url(url: str) -> bool:
@@ -482,6 +530,24 @@ def _image_ref_to_school_url(image_ref: str) -> str:
     if _is_remote_image_url(image_ref):
         return image_ref.strip()
     return _image_to_data_url(image_ref)
+
+
+def _school_vision_model_candidates() -> list[str]:
+    configured = (SCHOOL_VISION_MODEL or "").strip()
+    candidates = []
+    for model_name in ("qwen2.5-vl-instruct", configured, "qwen-instruct"):
+        if model_name and model_name not in candidates:
+            candidates.append(model_name)
+    return candidates
+
+
+def _school_http_timeout() -> httpx.Timeout:
+    return httpx.Timeout(
+        connect=VISION_CONNECT_TIMEOUT_SECONDS,
+        read=VISION_TIMEOUT_SECONDS,
+        write=VISION_WRITE_TIMEOUT_SECONDS,
+        pool=VISION_POOL_TIMEOUT_SECONDS,
+    )
 
 
 def _message_content_to_text(content) -> str:
@@ -548,39 +614,59 @@ async def _call_school_image_analysis(image_refs: list[str]) -> ImageAnalysisRes
     for image_ref in image_refs:
         content.append({"type": "image_url", "image_url": {"url": _image_ref_to_school_url(image_ref)}})
 
-    payload = {
-        "stream": False,
-        "model": SCHOOL_VISION_MODEL,
-        "messages": [{"role": "user", "content": content}],
-        "temperature": 0.1,
-    }
-
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {SCHOOL_API_KEY}",
     }
+    had_timeout = False
 
-    try:
-        async with httpx.AsyncClient(timeout=VISION_TIMEOUT_SECONDS) as client:
-            response = await client.post(SCHOOL_API_URL, headers=headers, json=payload)
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="图片识别服务请求超时")
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="图片识别服务暂不可用")
+    for model_name in _school_vision_model_candidates():
+        payload = {
+            "stream": False,
+            "model": model_name,
+            "messages": [{"role": "user", "content": content}],
+            "temperature": 0.1,
+        }
 
-    if response.status_code != 200:
-        logging.warning("School image analysis failed: %s %s", response.status_code, response.text[:500])
-        raise HTTPException(status_code=502, detail="图片识别服务暂不可用")
+        try:
+            transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+            async with httpx.AsyncClient(timeout=_school_http_timeout(), transport=transport) as client:
+                response = await client.post(SCHOOL_API_URL, headers=headers, json=payload)
+        except httpx.TimeoutException as exc:
+            had_timeout = True
+            logging.warning(
+                "School image analysis timed out with model=%s read_timeout=%ss: %s",
+                model_name,
+                VISION_TIMEOUT_SECONDS,
+                exc,
+            )
+            continue
+        except httpx.HTTPError as exc:
+            logging.warning("School image analysis HTTP error with model=%s: %s", model_name, exc)
+            continue
 
-    try:
-        data = response.json()
-        message = data["choices"][0]["message"]
-        content_text = _message_content_to_text(message.get("content"))
-        parsed = _parse_json_object(content_text)
-        return _clean_analysis_result(parsed)
-    except Exception as exc:
-        logging.warning("Image analysis parse failed: %s", exc)
-        raise HTTPException(status_code=502, detail="图片识别结果解析失败，请稍后重试")
+        if response.status_code != 200:
+            logging.warning(
+                "School image analysis failed with model=%s status=%s body=%s",
+                model_name,
+                response.status_code,
+                response.text[:500],
+            )
+            continue
+
+        try:
+            data = response.json()
+            message = data["choices"][0]["message"]
+            content_text = _message_content_to_text(message.get("content"))
+            parsed = _parse_json_object(content_text)
+            return _clean_analysis_result(parsed)
+        except Exception as exc:
+            logging.warning("Image analysis parse failed with model=%s: %s", model_name, exc)
+            continue
+
+    if had_timeout:
+        raise HTTPException(status_code=504, detail="图片识别服务响应超时，请稍后重试")
+    raise HTTPException(status_code=502, detail="图片识别服务暂不可用")
 
 
 @app.post("/api/image-analysis", response_model=ImageAnalysisResponse)
@@ -618,9 +704,8 @@ async def analyze_uploaded_images(payload: ImageAnalysisRequest, request: Reques
 def _build_vector(item_name: str, location: Optional[str] = None, lost_time: Optional[str] = None, description: Optional[str] = None, image_url: Optional[str] = None) -> Optional[str]:
     try:
         image_paths = _iter_image_paths(image_url)
-        # Parse or format lost_time if necessary (assuming it is string or datetime)
-        time_str = str(lost_time) if lost_time else ""
-        vec = encode_multimodal(item_name, location or "", time_str, description or "", image_paths)
+        # Search vectors intentionally exclude location/time so they describe only the item.
+        vec = encode_multimodal(item_name, "", "", description or "", image_paths)
         return _vector_str(vec)
     except Exception as e:
         import logging
@@ -684,6 +769,7 @@ def serialize_item_for_user(row, user: Optional[dict], claim_item_ids: Optional[
     item = serialize_row(row)
     if item is None:
         return None
+    item.pop("vector", None)
     if not _can_view_item_contact(item, user, claim_item_ids):
         item["contact_person"] = "匿名"
         item["contact_phone"] = None
@@ -1499,31 +1585,61 @@ class MatchCheckRequest(LostItemCreate):
     pass
 
 @app.post("/api/match-check")
-def match_check(item: MatchCheckRequest, request: Request, limit: int = 5):
+def match_check(item: MatchCheckRequest, request: Request, limit: int = Query(10, ge=1)):
     direction, _ = _resolve_create_state(item.direction, item.status, item.post_type)
     vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, item.image_url)
-    if not vector:
-        return {"results": []}
-
     target_direction = "found" if direction == "lost" else "lost"
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
+        lexical_params = [target_direction, "active"]
         cur.execute(
-            """SELECT *, 1 - (vector <=> %s::vector) AS similarity
-               FROM lost_items
-               WHERE vector IS NOT NULL
-                 AND direction = %s
-                 AND status = 'active'
-               ORDER BY vector <=> %s::vector
-               LIMIT %s""",
-            (vector, target_direction, vector, limit)
+            """SELECT * FROM lost_items
+               WHERE direction = %s AND status = %s""",
+            lexical_params,
         )
-        items = cur.fetchall()
+        lexical_items = cur.fetchall()
+
+        vector_items = []
+        if vector:
+            cur.execute(
+                """SELECT *, 1 - (vector <=> %s::vector) AS similarity
+                   FROM lost_items
+                   WHERE vector IS NOT NULL
+                     AND direction = %s
+                     AND status = 'active'
+                   ORDER BY vector <=> %s::vector
+                   LIMIT %s""",
+                (vector, target_direction, vector, RETRIEVAL_CANDIDATE_LIMIT),
+            )
+            vector_items = filter_vector_recall(
+                cur.fetchall(),
+                minimum_similarity=VECTOR_SIMILARITY_THRESHOLD,
+                maximum_drop=VECTOR_SIMILARITY_MAX_DROP,
+            )
+
+        bm25_items = bm25_recall(build_search_text(item), lexical_items, RETRIEVAL_CANDIDATE_LIMIT)
+        fused = rrf_fuse(
+            vector_items,
+            bm25_items,
+            min(limit, RETRIEVAL_CANDIDATE_LIMIT),
+            vector_weight=VECTOR_WEIGHT,
+            bm25_weight=BM25_WEIGHT,
+        )
+        items = rule_rerank(fused, item)
         current_user = get_optional_user(request)
         claim_item_ids = _get_claim_item_ids_for_user(cur, current_user)
-        # Only return high similarity items? For now return top 5
-        return {"results": [serialize_item_for_user(row, current_user, claim_item_ids) for row in items]}
+        results = []
+        for row, retrieval_score in items[:limit]:
+            display_score = hybrid_match_score(item.item_name, row)
+            if display_score < RESULT_RELEVANCE_THRESHOLD:
+                continue
+            serialized = serialize_item_for_user(row, current_user, claim_item_ids)
+            serialized["vector_similarity"] = serialized.get("similarity")
+            serialized["similarity"] = round(display_score, 4)
+            serialized["retrieval_score"] = round(retrieval_score, 6)
+            results.append(serialized)
+        return {"results": results}
     finally:
         cur.close()
         release_db_connection(conn)
@@ -1754,7 +1870,7 @@ def semantic_search(
     status: Optional[str] = None,
     direction: Optional[str] = None,
     post_type: Optional[str] = None,
-    limit: int = 10
+    limit: int = Query(10, ge=1),
 ):
     try:
         vec = encode_text(query)
@@ -1765,29 +1881,67 @@ def semantic_search(
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
-        where_clause = "WHERE vector IS NOT NULL"
-        params = [vector_str]
-        where_clause = _append_item_filters(
-            where_clause,
-            params,
+        lexical_where = "WHERE 1=1"
+        lexical_params = []
+        lexical_where = _append_item_filters(
+            lexical_where,
+            lexical_params,
             status=status,
             direction=direction,
             post_type=post_type,
             item_type=item_type,
         )
-        params.extend([vector_str, limit])
+        cur.execute(
+            f"SELECT * FROM lost_items {lexical_where}",
+            lexical_params,
+        )
+        lexical_items = cur.fetchall()
+
+        vector_where = "WHERE vector IS NOT NULL"
+        vector_params = [vector_str]
+        vector_where = _append_item_filters(
+            vector_where,
+            vector_params,
+            status=status,
+            direction=direction,
+            post_type=post_type,
+            item_type=item_type,
+        )
+        vector_params.extend([vector_str, RETRIEVAL_CANDIDATE_LIMIT])
         cur.execute(
             f"""SELECT *, 1 - (vector <=> %s::vector) AS similarity
                 FROM lost_items
-                {where_clause}
+                {vector_where}
                 ORDER BY vector <=> %s::vector
                 LIMIT %s""",
-            params
+            vector_params,
         )
-        items = cur.fetchall()
+        vector_items = filter_vector_recall(
+            cur.fetchall(),
+            minimum_similarity=VECTOR_SIMILARITY_THRESHOLD,
+            maximum_drop=VECTOR_SIMILARITY_MAX_DROP,
+        )
+        bm25_items = bm25_recall(query, lexical_items, RETRIEVAL_CANDIDATE_LIMIT)
+        items = rrf_fuse(
+            vector_items,
+            bm25_items,
+            min(limit, RETRIEVAL_CANDIDATE_LIMIT),
+            vector_weight=VECTOR_WEIGHT,
+            bm25_weight=BM25_WEIGHT,
+        )
         current_user = get_optional_user(request)
         claim_item_ids = _get_claim_item_ids_for_user(cur, current_user)
-        return {"results": [serialize_item_for_user(item, current_user, claim_item_ids) for item in items]}
+        results = []
+        for item, retrieval_score in items:
+            display_score = hybrid_match_score(query, item)
+            if display_score < RESULT_RELEVANCE_THRESHOLD:
+                continue
+            serialized = serialize_item_for_user(item, current_user, claim_item_ids)
+            serialized["vector_similarity"] = serialized.get("similarity")
+            serialized["similarity"] = round(display_score, 4)
+            serialized["retrieval_score"] = round(retrieval_score, 6)
+            results.append(serialized)
+        return {"results": results}
     finally:
         cur.close()
         release_db_connection(conn)

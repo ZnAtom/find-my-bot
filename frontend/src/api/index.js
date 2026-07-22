@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 // 动态 API 地址：开发环境用 localhost:8000，生产环境用空（同域反向代理）
 const apiBase = import.meta.env.VITE_API_BASE || ''
 const apiTimeout = 60000
+const imageAnalysisTimeout = 240000
 
 const api = axios.create({
   baseURL: apiBase + '/api',
@@ -105,7 +106,8 @@ export const uploadApi = {
     formData.append('file', file)
     return uploadClient.post('/api/upload', formData)
   },
-  analyzeImages: (imageUrls, config = {}) => api.post('/image-analysis', { image_urls: imageUrls }, config),
+  analyzeImages: (imageUrls, config = {}) =>
+    api.post('/image-analysis', { image_urls: imageUrls }, { timeout: imageAnalysisTimeout, ...config }),
 }
 
 function sameOriginUploadUrl(url) {
