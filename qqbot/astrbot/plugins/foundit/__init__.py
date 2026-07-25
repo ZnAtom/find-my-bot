@@ -1,0 +1,1 @@
+"""FoundIt AstrBot adapter plugin."""

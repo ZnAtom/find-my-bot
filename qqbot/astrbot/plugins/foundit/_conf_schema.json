@@ -1,0 +1,31 @@
+{
+  "backend_base_url": {
+    "description": "FoundIt 后端地址",
+    "type": "string",
+    "default": "http://host.docker.internal:8000",
+    "hint": "本机 Docker 测试使用 host.docker.internal；线上使用后端内网地址或 HTTPS 地址。"
+  },
+  "site_base_url": {
+    "description": "FoundIt 网站地址",
+    "type": "string",
+    "default": "https://foundit.geekpie.club",
+    "hint": "用于把物品详情相对路径转换成用户可打开的链接。"
+  },
+  "service_token": {
+    "description": "QQ 服务令牌",
+    "type": "string",
+    "default": "",
+    "hint": "必须与后端 QQ_BOT_SERVICE_TOKEN 完全一致，不要提交到 Git。"
+  },
+  "timeout_seconds": {
+    "description": "客服请求超时秒数",
+    "type": "int",
+    "default": 90
+  },
+  "batch_window_seconds": {
+    "description": "私聊消息静默聚合秒数",
+    "type": "int",
+    "default": 5,
+    "hint": "同一用户连续发送的文字和图片会在最后一条消息后等待此时间，再合并处理并只回复一次。"
+  }
+}

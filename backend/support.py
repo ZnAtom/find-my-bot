@@ -501,12 +501,19 @@ def _lost_items_vector_column_exists(cur) -> bool:
     return bool(cur.fetchone()[0])
 
 
-def search_public_items(conn, query: str, limit: int = SUPPORT_ITEM_LIMIT) -> list[dict[str, Any]]:
+def search_public_items(
+    conn,
+    query: str,
+    limit: int = SUPPORT_ITEM_LIMIT,
+    *,
+    query_embedding: Optional[list[float]] = None,
+) -> list[dict[str, Any]]:
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
         vector_str = None
-        if _lost_items_vector_column_exists(cur) and embedding_enabled() and VECTOR_WEIGHT > 0:
-            query_embedding = _try_encode_text(query)
+        if _lost_items_vector_column_exists(cur) and VECTOR_WEIGHT > 0:
+            if query_embedding is None and embedding_enabled():
+                query_embedding = _try_encode_text(query)
             if query_embedding is not None:
                 vector_str = _vector_str(query_embedding)
 

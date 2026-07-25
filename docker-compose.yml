@@ -43,6 +43,9 @@ services:
       - EMBEDDING_ENABLED=${EMBEDDING_ENABLED:-0}
       - EMBEDDING_MODEL_PATH=/app/model/models--Qwen--Qwen3-VL-Embedding-2B
       - SUPPORT_DOCS_DIR=/app/doc/support
+      - QQ_BOT_SERVICE_TOKEN=${QQ_BOT_SERVICE_TOKEN:-}
+      - QQ_SUPPORT_RATE_LIMIT_COUNT=${QQ_SUPPORT_RATE_LIMIT_COUNT:-60}
+      - QQ_IMAGE_SEARCH_RATE_LIMIT_COUNT=${QQ_IMAGE_SEARCH_RATE_LIMIT_COUNT:-20}
     volumes:
       - ./backend/uploads:/app/uploads
       - ./doc:/app/doc:ro

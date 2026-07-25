@@ -84,17 +84,17 @@ spec:
             - name: CASDOOR_ENDPOINT
               value: "https://auth.geekpie.club"
             - name: CASDOOR_REDIRECT_URI
-              value: "https://foundit.example.com/api/auth/callback"
+              value: "https://foundit.geekpie.club/api/auth/callback"
             - name: FRONTEND_BASE_URL
-              value: "https://foundit.example.com"
+              value: "https://foundit.geekpie.club"
             - name: AUTH_COOKIE_SECURE
               value: "1"
             - name: OAUTH_STATE_EXPIRE_SECONDS
               value: "1800"
             - name: CORS_ORIGINS
-              value: "https://foundit.example.com"
+              value: "https://foundit.geekpie.club"
             - name: CSRF_TRUSTED_ORIGINS
-              value: "https://foundit.example.com"
+              value: "https://foundit.geekpie.club"
             - name: CASDOOR_CLIENT_ID
               valueFrom:
                 secretKeyRef:
@@ -110,6 +110,16 @@ spec:
                 secretKeyRef:
                   name: foundit-casdoor
                   key: jwt_secret
+            - name: QQ_BOT_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: foundit-qq-bot
+                  key: service_token
+                  optional: true
+            - name: QQ_SUPPORT_RATE_LIMIT_COUNT
+              value: "60"
+            - name: QQ_IMAGE_SEARCH_RATE_LIMIT_COUNT
+              value: "20"
           ports:
             - containerPort: 8000
               name: http

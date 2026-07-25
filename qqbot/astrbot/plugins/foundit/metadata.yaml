@@ -1,0 +1,10 @@
+name: astrbot_plugin_foundit
+display_name: FoundIt 智能客服
+desc: 将 QQ 私聊安全接入 FoundIt 网站智能客服。
+short_desc: QQ 私聊接入 FoundIt 客服
+version: v0.1.0
+author: ZnAtom
+repo: https://github.com/ZnAtom/find-my-bot
+support_platforms:
+  - aiocqhttp
+astrbot_version: ">=4.5,<5"

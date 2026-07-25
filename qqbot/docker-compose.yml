@@ -1,30 +1,33 @@
 services:
   napcat:
-    image: napneko/napcatqq:latest
-    container_name: napcat
+    image: mlikiowa/napcat-docker:latest
+    container_name: foundit-napcat
     restart: unless-stopped
-    volumes:
-      - ./napcat/config:/app/config
-      - ./napcat/data:/app/data
-    ports:
-      - "3001:3001"
-      - "8080:8080"
     environment:
-      - TZ=Asia/Shanghai
+      TZ: Asia/Shanghai
+      NAPCAT_UID: "${NAPCAT_UID:-1000}"
+      NAPCAT_GID: "${NAPCAT_GID:-1000}"
+    volumes:
+      - ./napcat/config:/app/napcat/config
+      - ./napcat/data:/app/.config/QQ
+    ports:
+      - "127.0.0.1:6099:6099"
     networks:
       - qqbot-network
 
   astrbot:
     image: soulter/astrbot:latest
-    container_name: astrbot
+    container_name: foundit-astrbot
     restart: unless-stopped
-    volumes:
-      - ./astrbot/config:/AstrBot/data
-    ports:
-      - "6185:6185"
-      - "6199:6199"
     environment:
-      - TZ=Asia/Shanghai
+      TZ: Asia/Shanghai
+    volumes:
+      - ./astrbot/data:/AstrBot/data
+      - ./astrbot/plugins/foundit:/AstrBot/data/plugins/astrbot_plugin_foundit:ro
+    ports:
+      - "127.0.0.1:6185:6185"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - napcat
     networks:

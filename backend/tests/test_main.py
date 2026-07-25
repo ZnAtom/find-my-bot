@@ -54,8 +54,9 @@ def test_extract_school_response_text_supports_wrapped_output():
 
     assert _extract_school_response_text(data) == '{"item_name":"蓝色雨伞"}'
 
+@patch("app.release_db_connection")
 @patch("app.get_db_connection")
-def test_api_lost_items_no_auth(mock_db):
+def test_api_lost_items_no_auth(mock_db, mock_release_db):
     response = client.get("/api/lost-items")
     assert response.status_code in [200, 401]
 
@@ -170,14 +171,25 @@ def test_image_analysis_without_trusted_origin_is_forbidden(mock_db):
     assert response.status_code == 403
 
 
+@patch("app._call_school_image_analysis")
 @patch("app.get_db_connection")
-def test_image_analysis_allows_trusted_origin_without_auth(mock_db):
+def test_image_analysis_allows_trusted_origin_without_auth(mock_db, mock_analysis):
+    mock_analysis.return_value = {
+        "item_name": "测试物品",
+        "item_type": "其他",
+        "description": "固定测试结果",
+        "notes": [],
+    }
+
     response = client.post(
         "/api/image-analysis",
         headers={"Origin": "http://localhost:5173"},
         json={"image_urls": [IMAGE_ANALYSIS_TEST_IMAGE_URL]}
     )
-    assert response.status_code in [502, 503]
+
+    assert response.status_code == 200
+    assert response.json()["item_name"] == "测试物品"
+    mock_analysis.assert_awaited_once_with([IMAGE_ANALYSIS_TEST_IMAGE_URL])
 
 
 def test_logout_without_trusted_origin_is_forbidden():

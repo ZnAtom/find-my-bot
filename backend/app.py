@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query, File, UploadFile, Request
+from fastapi import FastAPI, HTTPException, Query, File, Form, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -7,8 +7,10 @@ from typing import Any, Optional, List
 from time import monotonic
 import httpx
 import base64
+import hmac
 import json
 import mimetypes
+import tempfile
 import psycopg2
 import psycopg2.extras
 import os
@@ -48,7 +50,7 @@ from retrieval import (
     rrf_fuse,
     rule_rerank,
 )
-from support import answer_support_chat, make_anonymous_key
+from support import answer_support_chat, make_anonymous_key, search_public_items
 
 app = FastAPI(title="校园失物招领 API", version="1.0.0")
 
@@ -165,6 +167,12 @@ IMAGE_ANALYSIS_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("IMAGE_ANALYSIS_RA
 SUPPORT_CHAT_ANON_RATE_LIMIT_COUNT = int(os.environ.get("SUPPORT_CHAT_ANON_RATE_LIMIT_COUNT", "20"))
 SUPPORT_CHAT_AUTH_RATE_LIMIT_COUNT = int(os.environ.get("SUPPORT_CHAT_AUTH_RATE_LIMIT_COUNT", "60"))
 SUPPORT_CHAT_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("SUPPORT_CHAT_RATE_LIMIT_WINDOW_SECONDS", "3600"))
+QQ_BOT_SERVICE_TOKEN = os.environ.get("QQ_BOT_SERVICE_TOKEN", "").strip()
+QQ_SUPPORT_RATE_LIMIT_COUNT = int(os.environ.get("QQ_SUPPORT_RATE_LIMIT_COUNT", "60"))
+QQ_IMAGE_SEARCH_RATE_LIMIT_COUNT = int(os.environ.get("QQ_IMAGE_SEARCH_RATE_LIMIT_COUNT", "20"))
+QQ_IMAGE_MAX_IMAGES = min(3, max(1, int(os.environ.get("QQ_IMAGE_MAX_IMAGES", "3"))))
+QQ_IMAGE_MAX_PIXELS = int(os.environ.get("QQ_IMAGE_MAX_PIXELS", "25000000"))
+QQ_IMAGE_SEARCH_LIMIT = min(5, max(1, int(os.environ.get("QQ_IMAGE_SEARCH_LIMIT", "5"))))
 
 ITEM_TYPE_OPTIONS = {"证件卡片", "电子产品", "衣物鞋帽", "学习用品", "钱包钥匙", "其他"}
 
@@ -207,11 +215,15 @@ def _client_rate_key(request: Request) -> str:
 
 
 def _check_rate_limit(request: Request, bucket: str, max_requests: int, window_seconds: int):
+    _check_rate_limit_key(bucket, _client_rate_key(request), max_requests, window_seconds)
+
+
+def _check_rate_limit_key(bucket: str, subject: str, max_requests: int, window_seconds: int):
     if max_requests <= 0 or window_seconds <= 0:
         return
 
     now = monotonic()
-    key = (bucket, _client_rate_key(request))
+    key = (bucket, subject)
     window_start = now - window_seconds
     requests = [timestamp for timestamp in _rate_limit_buckets.get(key, []) if timestamp > window_start]
 
@@ -220,6 +232,20 @@ def _check_rate_limit(request: Request, bucket: str, max_requests: int, window_s
 
     requests.append(now)
     _rate_limit_buckets[key] = requests
+
+
+def _service_bearer_is_valid(authorization: str, expected_token: str) -> bool:
+    if not expected_token or not authorization.startswith("Bearer "):
+        return False
+    supplied_token = authorization.removeprefix("Bearer ").strip()
+    return bool(supplied_token) and hmac.compare_digest(supplied_token, expected_token)
+
+
+def _require_qq_service(request: Request) -> None:
+    if not QQ_BOT_SERVICE_TOKEN:
+        raise HTTPException(status_code=503, detail="QQ 客服接入尚未配置")
+    if not _service_bearer_is_valid(request.headers.get("authorization", ""), QQ_BOT_SERVICE_TOKEN):
+        raise HTTPException(status_code=401, detail="QQ 客服接入认证失败")
 
 
 @app.get("/api/campus-map/tiles/{zoom}/tile{x}_{y}.png")
@@ -423,6 +449,17 @@ class SupportChatResponse(BaseModel):
     session_id: str
     item_results: List[dict[str, Any]] = Field(default_factory=list)
 
+
+class QQSupportChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000)
+    session_key: str = Field(..., min_length=32, max_length=128)
+    session_id: Optional[str] = None
+
+
+class QQImageSearchResponse(BaseModel):
+    analysis: ImageAnalysisResponse
+    results: List[dict[str, Any]] = Field(default_factory=list)
+    vector_search_used: bool = False
 
 
 # 数据库向量列维度（需与 pgvector column 定义一致）
@@ -857,6 +894,166 @@ async def support_chat(payload: SupportChatRequest, request: Request):
         raise HTTPException(status_code=500, detail="智能客服请求失败")
     finally:
         release_db_connection(conn)
+
+
+async def _normalize_qq_temp_image(file: UploadFile, directory: str) -> str:
+    if file.content_type and file.content_type not in ALLOWED_MIME_TYPES | {"application/octet-stream"}:
+        raise HTTPException(status_code=400, detail="QQ 图片格式不受支持")
+
+    contents = await file.read(MAX_FILE_SIZE + 1)
+    if not contents:
+        raise HTTPException(status_code=400, detail="QQ 图片内容为空")
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"QQ 图片大小超过 {MAX_FILE_SIZE // 1024 // 1024}MB 限制",
+        )
+
+    output_path = os.path.join(directory, f"{uuid.uuid4().hex}.jpg")
+    try:
+        with Image.open(io.BytesIO(contents)) as source:
+            width, height = source.size
+            if width <= 0 or height <= 0 or width * height > QQ_IMAGE_MAX_PIXELS:
+                raise HTTPException(status_code=400, detail="QQ 图片尺寸无效或过大")
+            source.seek(0)
+            normalized = ImageOps.exif_transpose(source)
+            normalized.load()
+            if normalized.mode != "RGB":
+                if "A" in normalized.getbands():
+                    background = Image.new("RGB", normalized.size, (255, 255, 255))
+                    background.paste(normalized, mask=normalized.getchannel("A"))
+                    normalized = background
+                else:
+                    normalized = normalized.convert("RGB")
+            normalized.thumbnail((VISION_IMAGE_MAX_SIDE, VISION_IMAGE_MAX_SIDE))
+            normalized.save(
+                output_path,
+                format="JPEG",
+                quality=VISION_IMAGE_JPEG_QUALITY,
+                optimize=True,
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        logging.exception("Invalid QQ image upload")
+        raise HTTPException(status_code=400, detail="QQ 图片损坏或内容不是有效图片")
+
+    return output_path
+
+
+def _qq_image_lexical_query(message: str, analysis: ImageAnalysisResponse) -> str:
+    return analysis.item_name or message.strip() or analysis.item_type or analysis.description
+
+
+def _qq_image_query_embedding(
+    message: str,
+    analysis: ImageAnalysisResponse,
+    image_paths: list[str],
+) -> Optional[list[float]]:
+    if not embedding_enabled():
+        return None
+    try:
+        return encode_multimodal(
+            analysis.item_name,
+            "",
+            "",
+            " ".join(part for part in (analysis.description, message.strip()) if part),
+            image_paths,
+        )
+    except Exception:
+        logging.exception("QQ image query embedding failed; falling back to visual text search")
+        return None
+
+
+@app.post("/api/integrations/qq/v1/support/chat", response_model=SupportChatResponse)
+async def qq_support_chat(payload: QQSupportChatRequest, request: Request):
+    _require_qq_service(request)
+    anonymous_key = make_anonymous_key(f"qq:{payload.session_key}")
+    _check_rate_limit_key(
+        "support-chat-qq",
+        anonymous_key,
+        QQ_SUPPORT_RATE_LIMIT_COUNT,
+        SUPPORT_CHAT_RATE_LIMIT_WINDOW_SECONDS,
+    )
+
+    conn = get_db_connection()
+    try:
+        return await answer_support_chat(
+            conn,
+            message=payload.message,
+            user=None,
+            anonymous_key=anonymous_key,
+            session_id=payload.session_id,
+            channel="qq",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError:
+        logging.exception("QQ support chat LLM call failed")
+        raise HTTPException(status_code=502, detail="智能客服暂时不可用，请稍后再试")
+    except HTTPException:
+        raise
+    except Exception:
+        logging.exception("QQ support chat failed")
+        raise HTTPException(status_code=500, detail="智能客服请求失败")
+    finally:
+        release_db_connection(conn)
+
+
+@app.post(
+    "/api/integrations/qq/v1/support/image-search",
+    response_model=QQImageSearchResponse,
+)
+async def qq_support_image_search(
+    request: Request,
+    session_key: str = Form(...),
+    message: str = Form(""),
+    files: List[UploadFile] = File(...),
+):
+    _require_qq_service(request)
+    session_key = session_key.strip()
+    message = message.strip()
+    if len(session_key) < 32 or len(session_key) > 128:
+        raise HTTPException(status_code=400, detail="QQ 会话标识无效")
+    if len(message) > 1000:
+        raise HTTPException(status_code=400, detail="QQ 消息内容过长")
+    if not files:
+        raise HTTPException(status_code=400, detail="请发送至少一张图片")
+    if len(files) > QQ_IMAGE_MAX_IMAGES:
+        raise HTTPException(status_code=400, detail=f"单次最多处理 {QQ_IMAGE_MAX_IMAGES} 张图片")
+
+    anonymous_key = make_anonymous_key(f"qq:{session_key}")
+    _check_rate_limit_key(
+        "support-image-qq",
+        anonymous_key,
+        QQ_IMAGE_SEARCH_RATE_LIMIT_COUNT,
+        SUPPORT_CHAT_RATE_LIMIT_WINDOW_SECONDS,
+    )
+
+    with tempfile.TemporaryDirectory(prefix="foundit-qq-image-") as temp_dir:
+        image_paths = [await _normalize_qq_temp_image(file, temp_dir) for file in files]
+        analysis = await _call_school_image_analysis(image_paths)
+        lexical_query = _qq_image_lexical_query(message, analysis)
+        if not lexical_query:
+            raise HTTPException(status_code=422, detail="未能从图片中识别出可搜索的物品信息")
+
+        query_embedding = _qq_image_query_embedding(message, analysis, image_paths)
+        conn = get_db_connection()
+        try:
+            results = search_public_items(
+                conn,
+                lexical_query,
+                QQ_IMAGE_SEARCH_LIMIT,
+                query_embedding=query_embedding,
+            )
+        finally:
+            release_db_connection(conn)
+
+    return QQImageSearchResponse(
+        analysis=analysis,
+        results=results,
+        vector_search_used=query_embedding is not None,
+    )
 
 
 @lru_cache(maxsize=128)

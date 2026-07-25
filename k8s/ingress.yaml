@@ -10,7 +10,7 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
 spec:
   rules:
-    - host: foundit.example.com # Replace with your actual domain
+    - host: foundit.geekpie.club
       http:
         paths:
           # Route /api to backend
@@ -39,5 +39,5 @@ spec:
                   number: 5173
   tls:
     - hosts:
-        - foundit.example.com
+        - foundit.geekpie.club
       secretName: foundit-tls
