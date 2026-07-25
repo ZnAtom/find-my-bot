@@ -2,14 +2,14 @@
   "backend_base_url": {
     "description": "FoundIt 后端地址",
     "type": "string",
-    "default": "http://host.docker.internal:8000",
-    "hint": "本机 Docker 测试使用 host.docker.internal；线上使用后端内网地址或 HTTPS 地址。"
+    "default": "http://foundit.geekpie.club",
+    "hint": "填写 QQ 容器可访问的网站或后端地址；当前本机部署经 nginx 使用 http://foundit.geekpie.club。"
   },
   "site_base_url": {
     "description": "FoundIt 网站地址",
     "type": "string",
-    "default": "https://foundit.geekpie.club",
-    "hint": "用于把物品详情相对路径转换成用户可打开的链接。"
+    "default": "http://foundit.geekpie.club",
+    "hint": "用于把物品详情相对路径转换成用户可打开的链接；需与当前网站访问地址一致。"
   },
   "service_token": {
     "description": "QQ 服务令牌",

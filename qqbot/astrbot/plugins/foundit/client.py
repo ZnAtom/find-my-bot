@@ -23,6 +23,39 @@ def derive_session_key(service_token: str, sender_id: str) -> str:
     ).hexdigest()
 
 
+def plain_qq_text(text: str) -> str:
+    """Convert Markdown-ish backend answers into readable QQ plain text."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"```(?:\w+)?\n?([\s\S]*?)```", r"\1", text)
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1：\2", text)
+    text = re.sub(r"(\*\*|__)(.*?)\1", r"\2", text)
+    text = re.sub(r"(?<!\*)\*(?!\*)([^*\n]+)(?<!\*)\*(?!\*)", r"\1", text)
+    text = re.sub(r"(?<!_)_(?!_)([^_\n]+)(?<!_)_(?!_)", r"\1", text)
+
+    cleaned_lines: list[str] = []
+    previous_blank = False
+    for raw_line in text.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            if cleaned_lines and not previous_blank:
+                cleaned_lines.append("")
+                previous_blank = True
+            continue
+
+        line = re.sub(r"^#{1,6}\s*", "", line)
+        line = re.sub(r"^>\s*", "", line)
+        line = re.sub(r"^(?:[-*+]|\d+[.)]|[一二三四五六七八九十]+[、.])\s*", "", line)
+        line = line.strip()
+        if line:
+            cleaned_lines.append(line)
+            previous_blank = False
+
+    reply = "\n".join(cleaned_lines).strip()
+    reply = re.sub(r"\n{3,}", "\n\n", reply)
+    return reply
+
+
 def format_image_search_reply(
     payload: dict[str, Any],
     site_base_url: str,
@@ -57,7 +90,7 @@ def format_image_search_reply(
             if path.startswith("/#") and base_url:
                 path = f"{base_url}{path}"
             lines.append(
-                f"{index}. #{item.get('id')} {item.get('item_name') or '未命名物品'}"
+                f"第{index}个：#{item.get('id')} {item.get('item_name') or '未命名物品'}"
                 f"（{direction}，{location}）"
             )
             if path:
@@ -77,6 +110,7 @@ def format_reply(payload: dict[str, Any], site_base_url: str, max_chars: int = 3
     answer = str(payload.get("answer") or "暂时没有可用回答。").strip()
     if base_url:
         answer = re.sub(r"(?<!\w)/#/lost/(\d+)", rf"{base_url}/#/lost/\1", answer)
+    answer = plain_qq_text(answer)
 
     links: list[str] = []
     seen: set[str] = set()

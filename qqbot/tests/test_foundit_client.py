@@ -40,6 +40,25 @@ def test_format_reply_absolutizes_and_deduplicates_item_links():
     assert reply.count("https://foundit.geekpie.club/#/lost/12") == 1
 
 
+def test_format_reply_removes_markdown_for_qq_plain_text():
+    payload = {
+        "answer": (
+            "发布招领信息就是表示你捡到了物品。\n\n"
+            "- **未登录也可以发布匿名招领**，但匿名招领不能填写联系方式。\n"
+            "- 发布时填写 `当前存放处`。"
+        ),
+        "sources": [],
+    }
+
+    reply = format_reply(payload, "https://foundit.geekpie.club/")
+
+    assert "**" not in reply
+    assert "`" not in reply
+    assert "- " not in reply
+    assert "未登录也可以发布匿名招领" in reply
+    assert "当前存放处" in reply
+
+
 def test_client_sends_service_auth_and_opaque_session_key():
     async def run_test():
         async def handler(request: httpx.Request) -> httpx.Response:

@@ -1,12 +1,13 @@
 services:
   napcat:
-    image: mlikiowa/napcat-docker:latest
+    image: ${NAPCAT_IMAGE:-m.daocloud.io/docker.io/mlikiowa/napcat-docker:latest}
     container_name: foundit-napcat
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
       NAPCAT_UID: "${NAPCAT_UID:-1000}"
       NAPCAT_GID: "${NAPCAT_GID:-1000}"
+      ACCOUNT: "${NAPCAT_ACCOUNT:-}"
     volumes:
       - ./napcat/config:/app/napcat/config
       - ./napcat/data:/app/.config/QQ
@@ -16,7 +17,7 @@ services:
       - qqbot-network
 
   astrbot:
-    image: soulter/astrbot:latest
+    image: ${ASTRBOT_IMAGE:-m.daocloud.io/docker.io/soulter/astrbot:latest}
     container_name: foundit-astrbot
     restart: unless-stopped
     environment:

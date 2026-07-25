@@ -24,9 +24,9 @@ class FoundItPlugin(Star):
         super().__init__(context)
         self.config = config
         self.service_token = str(config.get("service_token", "")).strip()
-        self.site_base_url = str(config.get("site_base_url", "https://foundit.geekpie.club")).strip()
+        self.site_base_url = str(config.get("site_base_url", "http://foundit.geekpie.club")).strip()
         self.client = FoundItSupportClient(
-            str(config.get("backend_base_url", "http://host.docker.internal:8000")),
+            str(config.get("backend_base_url", "http://foundit.geekpie.club")),
             self.service_token,
             timeout_seconds=float(config.get("timeout_seconds", 90)),
         )

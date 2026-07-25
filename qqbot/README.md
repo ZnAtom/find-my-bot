@@ -31,6 +31,12 @@
 首次登录时按 NapCat 日志或 http://127.0.0.1:6099/webui 的提示扫码。WebUI 只绑定
 本机，不会直接暴露到局域网或公网。
 
+首次扫码成功后，可以在 qqbot/.env 填写：
+
+    NAPCAT_ACCOUNT=你的QQ号
+
+之后容器启动会尝试快速登录该账号；如果 NapCat 提示登录态已失效，仍需要重新扫码。
+
 ## 3. 连接 NapCat 与 AstrBot
 
 1. 打开 AstrBot：http://127.0.0.1:6185。
@@ -47,9 +53,9 @@ AstrBot 会把 WebUI 配置保存在已忽略的 qqbot/astrbot/data/。
 
 在 AstrBot 插件配置中填写：
 
-- backend_base_url：本机后端用 http://host.docker.internal:8000；线上建议使用
-  后端内网地址，无法走内网时才使用 https://foundit.geekpie.club。
-- site_base_url：https://foundit.geekpie.club。
+- backend_base_url：当前本机部署使用 http://foundit.geekpie.club，经 nginx 转发到
+  后端。只有当后端监听容器可访问的地址时，才使用内网后端地址。
+- site_base_url：http://foundit.geekpie.club。
 - service_token：与后端 QQ_BOT_SERVICE_TOKEN 完全相同。
 - timeout_seconds：默认 90。
 - batch_window_seconds：默认 5。同一用户连续发送的文字和图片会在最后一条消息后
