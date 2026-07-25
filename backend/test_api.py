@@ -7,6 +7,10 @@ import httpx
 import json
 import os
 
+from config_env import load_project_env
+
+load_project_env()
+
 # 学校 API 配置（与 agent.py 保持一致）
 SCHOOL_API_URL = os.environ.get("SCHOOL_API_URL", "https://genaiapi.shanghaitech.edu.cn/api/v1/start")
 SCHOOL_API_KEY = os.environ.get("SCHOOL_API_KEY")

@@ -1,19 +1,55 @@
 import os
-import torch
+from pathlib import Path
 from PIL import Image
-from sentence_transformers import SentenceTransformer
 
 os.environ.setdefault("HF_ENDPOINT", os.environ.get("HF_ENDPOINT", "https://huggingface.co"))
 os.environ.setdefault("HF_HUB_OFFLINE", os.environ.get("HF_HUB_OFFLINE", "0"))
 
 _model = None
 VECTOR_DIM = 1536
+_DISABLED_VALUES = {"0", "false", "no", "off"}
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_DEFAULT_LOCAL_MODEL_PATH = _PROJECT_ROOT / "model" / "models--Qwen--Qwen3-VL-Embedding-2B"
+_DEFAULT_MODEL_NAME = "Qwen/Qwen3-VL-Embedding-2B"
+
+
+def embedding_enabled() -> bool:
+    return os.environ.get("EMBEDDING_ENABLED", "0").strip().lower() not in _DISABLED_VALUES
+
+
+def _resolve_model_path() -> str:
+    configured_path = os.environ.get("EMBEDDING_MODEL_PATH")
+    if configured_path:
+        model_path = Path(configured_path).expanduser()
+        if not model_path.is_absolute():
+            model_path = _PROJECT_ROOT / model_path
+    elif _DEFAULT_LOCAL_MODEL_PATH.exists():
+        model_path = _DEFAULT_LOCAL_MODEL_PATH
+    else:
+        return os.environ.get("EMBEDDING_MODEL_NAME", _DEFAULT_MODEL_NAME)
+
+    snapshots_dir = model_path / "snapshots"
+    if snapshots_dir.is_dir():
+        snapshots = sorted(
+            (path for path in snapshots_dir.iterdir() if path.is_dir()),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if snapshots:
+            return str(snapshots[0])
+
+    return str(model_path)
 
 
 def init_model():
     global _model
     if _model is not None:
         return
+    if not embedding_enabled():
+        return
+
+    import torch
+    from sentence_transformers import SentenceTransformer
 
     if torch.backends.mps.is_available():
         device = "mps"
@@ -26,8 +62,9 @@ def init_model():
         dtype = torch.float32
 
     local_only = os.environ.get("HF_LOCAL_ONLY", "0") == "1"
+    model_path = _resolve_model_path()
     _model = SentenceTransformer(
-        "Qwen/Qwen3-VL-Embedding-2B",
+        model_path,
         device=device,
         model_kwargs={"torch_dtype": dtype},
         local_files_only=local_only,
@@ -36,6 +73,8 @@ def init_model():
 
 
 def encode_text(text: str) -> list[float]:
+    if not embedding_enabled():
+        raise RuntimeError("Embedding model is disabled")
     if _model is None:
         init_model()
     embedding = _model.encode(text, normalize_embeddings=True)
@@ -43,6 +82,8 @@ def encode_text(text: str) -> list[float]:
 
 
 def encode_multimodal(item_name: str, location: str, time_str: str, description: str, image_paths: list[str]) -> list[float]:
+    if not embedding_enabled():
+        raise RuntimeError("Embedding model is disabled")
     if _model is None:
         init_model()
     parts = []

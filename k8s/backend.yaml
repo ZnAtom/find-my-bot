@@ -65,7 +65,7 @@ spec:
             - name: SCHOOL_API_URL
               value: "https://genaiapi.shanghaitech.edu.cn/api/v1/start"
             - name: SCHOOL_VISION_MODEL
-              value: "qwen-instruct"
+              value: "GPT-5.5"
             - name: SCHOOL_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -84,17 +84,17 @@ spec:
             - name: CASDOOR_ENDPOINT
               value: "https://auth.geekpie.club"
             - name: CASDOOR_REDIRECT_URI
-              value: "https://foundit.geekpie.club/api/auth/callback"
+              value: "https://foundit.example.com/api/auth/callback"
             - name: FRONTEND_BASE_URL
-              value: "https://foundit.geekpie.club"
+              value: "https://foundit.example.com"
             - name: AUTH_COOKIE_SECURE
               value: "1"
             - name: OAUTH_STATE_EXPIRE_SECONDS
               value: "1800"
             - name: CORS_ORIGINS
-              value: "https://foundit.geekpie.club"
+              value: "https://foundit.example.com"
             - name: CSRF_TRUSTED_ORIGINS
-              value: "https://foundit.geekpie.club"
+              value: "https://foundit.example.com"
             - name: CASDOOR_CLIENT_ID
               valueFrom:
                 secretKeyRef:

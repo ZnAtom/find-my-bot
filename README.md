@@ -43,6 +43,8 @@ FoundIt 当前是一个完整的前后端分离项目：
 |-- qqbot/          NapCat / AstrBot 预留配置
 |-- docker-compose.yml
 |-- .env.example
+|-- .env.server.example
+|-- dev-local.sh
 `-- README.md
 ```
 
@@ -63,6 +65,8 @@ FoundIt 当前是一个完整的前后端分离项目：
 cp .env.example .env
 ```
 
+`.env.example` 面向任意本地开发设备，默认不启用 embedding，方便先跑通服务。`.env.server.example` 是局域网/域名部署形态的参考模板，包含 nginx 同域反代、宿主机 PostgreSQL 和本地 Qwen 模型的配置示例，但仍需要替换密钥和具体域名/IP。
+
 建议至少确认以下配置：
 
 | 变量 | 用途 |
@@ -78,6 +82,7 @@ cp .env.example .env
 说明：
 
 - 只想先跑匿名浏览、列表和基础发布，认证相关变量可以后补。
+- 本地 Docker 暂时不跑千问 embedding 时，保持 `INSTALL_EMBEDDING_DEPS=0` 和 `EMBEDDING_ENABLED=0`；发布记录的 `vector` 会为空，`/api/semantic-search` 会退回 BM25 检索。
 - 要使用登录、个人中心、管理员后台，必须正确配置 Casdoor 和 `JWT_SECRET`。
 - 要使用 AI 图片识别，必须配置 `SCHOOL_API_KEY`。
 
@@ -103,84 +108,82 @@ docker compose up -d --build
 - `backend/migrate_item_state.py`
 - `backend/migrate_flow_fields.py`
 
-首次启动后端时，嵌入模型可能需要下载，耗时取决于网络和机器性能。
+默认本地配置 `INSTALL_EMBEDDING_DEPS=0`、`EMBEDDING_ENABLED=0`，后端镜像不会安装 embedding 相关依赖，也不会加载 `Qwen/Qwen3-VL-Embedding-2B`，基础浏览、发布、关键词检索和 BM25 召回可用。后续需要启用向量语义搜索时，将 `.env` 中这两项都改为 `1` 后重新构建并启动后端；首次启动可能需要下载模型，耗时取决于网络和机器性能。
 
 ## 本地开发
 
-### 只启动数据库
+### Linux 一键本地启动
+
+Linux 本地开发推荐使用 `dev-local.sh`：数据库用 Docker Compose 的 `db` 服务，后端和前端直接跑在宿主机，方便热重载。
+
+先安装系统依赖：
 
 ```bash
-docker compose up -d db
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip docker.io docker-compose-plugin postgresql-client psmisc gettext-base
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
 ```
 
-### 本地运行后端
+还需要安装 Node.js 22+ 和 npm，推荐用 `nvm` 或 NodeSource；部分 Ubuntu 源里的 `nodejs` 版本偏旧。执行 `usermod` 后需要退出当前 shell 并重新登录，或者临时用 `sudo docker ...` 验证 Docker。
+
+初始化 Python/Node 依赖：
 
 ```bash
-conda activate hugging_face
-cd backend
-python -m pip install -r requirements.txt
-uvicorn app:app --host 0.0.0.0 --port 8000
+cd find-my-bot
+bash dev-local.sh setup
 ```
 
-本地后端默认读取项目根目录的 `.env`。如果数据库跑在 compose 中，通常需要：
-
-- `DB_HOST=127.0.0.1`
-- `DB_PORT=5433`
-
-### 重启后端
-
-如果使用项目的一键开发脚本，可一次停止数据库、后端和前端，再按顺序全部启动：
+启动全部服务：
 
 ```bash
-cd /Users/sagiri/WorkSpace/find-my-bot
+bash dev-local.sh start
+```
+
+常用命令：
+
+```bash
+bash dev-local.sh status
+bash dev-local.sh logs
 bash dev-local.sh restart
+bash dev-local.sh stop
 ```
 
-该命令会停止 Vite 前端、FastAPI 后端和 Docker Compose 数据库容器，然后依次启动数据库、执行 schema/迁移、启动后端和前端。日志可通过 `bash dev-local.sh logs` 查看，运行状态可通过 `bash dev-local.sh status` 查看。
+默认地址：
 
-只需要手动重启后端时，按下面的方式操作。
+- 前端：`http://127.0.0.1:5173`
+- 后端文档：`http://127.0.0.1:8000/docs`
+- 数据库：`127.0.0.1:5433/lostfound`
 
-如果后端正在当前终端前台运行，先按 `Ctrl+C` 停止，然后执行：
+默认本地脚本保持 `EMBEDDING_ENABLED=0`，不会加载 Qwen embedding；图片识别仍使用学校 GenAI API 的 `SCHOOL_API_KEY` 和 `SCHOOL_VISION_MODEL`。
 
-```bash
-conda activate hugging_face
-cd /Users/sagiri/WorkSpace/find-my-bot/backend
-uvicorn app:app --host 0.0.0.0 --port 8000
-```
-
-必须在 `backend/` 目录中运行，否则会出现 `Could not import module "app"`。本项目加载嵌入模型需要一定时间，看到以下日志后才表示启动完成：
+如果模型目录已经在项目内，推荐使用相对路径：
 
 ```text
-Application startup complete.
-Uvicorn running on http://0.0.0.0:8000
+EMBEDDING_MODEL_PATH=model/models--Qwen--Qwen3-VL-Embedding-2B
+SUPPORT_DOCS_DIR=doc/support
 ```
 
-如果提示 8000 端口已被占用，先查找并停止旧进程：
+需要类似当前服务器的局域网/域名部署时，可以先复制服务器模板再按实际环境修改：
 
 ```bash
-lsof -nP -iTCP:8000 -sTCP:LISTEN
-kill "$(lsof -tiTCP:8000 -sTCP:LISTEN)"
+cp .env.server.example .env
 ```
 
-如果后端由 Docker Compose 运行，普通重启使用：
+如果 Docker Hub 拉取 PostgreSQL 镜像仍然超时，也可以改用本机 PostgreSQL 16 + pgvector。先创建用户和数据库，然后用 `DB_MODE=local` 启动：
 
 ```bash
-docker compose restart backend
+DB_MODE=local DB_PORT=5432 bash dev-local.sh start
 ```
 
-代码或 Python 依赖发生变化时，需要重新构建镜像：
+### 手动启动
 
-```bash
-docker compose up -d --build backend
-```
+不用脚本时，顺序是：
 
-### 本地运行前端
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
+1. 启动 PostgreSQL，并确保已安装 `pgvector` 扩展。
+2. 在项目根目录配置 `.env`。
+3. 在 `backend/` 安装依赖并运行 `python -m uvicorn app:app --host 127.0.0.1 --port 8000 --reload`。
+4. 在 `frontend/` 执行 `npm install` 和 `npm run dev`。
 
 开发环境下，Vite 会把 `/api` 和 `/uploads` 代理到 `http://127.0.0.1:8000`。
 

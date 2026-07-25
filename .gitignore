@@ -57,6 +57,12 @@ qqbot/astrbot/data/
 *.pem
 *.key
 
+# 本机生成配置和大模型
+model/
+deploy/nginx/*.conf
+!deploy/nginx/*.template
+!deploy/nginx/*.example
+
 # IDE
 .vscode/
 .idea/
@@ -86,6 +92,4 @@ htmlcov/
 .pytest_cache/
 .tox/
 
-# 本地开发启动脚本（个人本地环境，不纳入版本控制）
-dev-local.sh
 .local/

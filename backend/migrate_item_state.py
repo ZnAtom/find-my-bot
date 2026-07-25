@@ -2,6 +2,9 @@ import os
 
 import psycopg2
 
+from config_env import load_project_env
+
+load_project_env()
 
 DB_CONFIG = {
     "dbname": os.environ.get("DB_NAME", "lostfound"),

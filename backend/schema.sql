@@ -1,4 +1,10 @@
-CREATE EXTENSION IF NOT EXISTS vector;
+DO $$
+BEGIN
+    CREATE EXTENSION IF NOT EXISTS vector;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'pgvector extension unavailable: %, vector search disabled', SQLERRM;
+END $$;
 
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
@@ -31,7 +37,6 @@ CREATE TABLE IF NOT EXISTS lost_items (
     contact_qq VARCHAR(20),
     contact_email VARCHAR(100),
     user_id INTEGER REFERENCES users(id),
-    vector VECTOR(1536),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT lost_items_direction_check CHECK (direction IN ('lost', 'found')),
@@ -76,6 +81,45 @@ CREATE TABLE IF NOT EXISTS match_records (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS support_knowledge_sources (
+    id SERIAL PRIMARY KEY,
+    path TEXT UNIQUE NOT NULL,
+    title TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS support_knowledge_chunks (
+    id SERIAL PRIMARY KEY,
+    source_id INTEGER NOT NULL REFERENCES support_knowledge_sources(id) ON DELETE CASCADE,
+    chunk_index INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    token_count INTEGER NOT NULL DEFAULT 0,
+    embedding JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source_id, chunk_index)
+);
+
+CREATE TABLE IF NOT EXISTS support_chat_sessions (
+    id UUID PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    anonymous_key TEXT,
+    channel VARCHAR(20) NOT NULL DEFAULT 'web',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS support_chat_messages (
+    id SERIAL PRIMARY KEY,
+    session_id UUID NOT NULL REFERENCES support_chat_sessions(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL,
+    content TEXT NOT NULL,
+    sources JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT support_chat_messages_role_check CHECK (role IN ('user', 'assistant'))
+);
+
 -- 兼容已存在的旧表：CREATE TABLE IF NOT EXISTS 不会为旧表补新增列。
 ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS storage_location VARCHAR(200);
 ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS found_time TIMESTAMP;
@@ -85,15 +129,35 @@ ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS contact_visibility VARCHAR(20) N
 ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS contact_email VARCHAR(100);
 ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'vector') THEN
+        EXECUTE 'ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS vector VECTOR(1536)';
+    END IF;
+END $$;
+
 -- 同步旧数据迁移后的 SERIAL sequence，避免从 MAX(id)+1 切回自增时发生主键冲突。
 SELECT setval(pg_get_serial_sequence('users', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM users), false);
 SELECT setval(pg_get_serial_sequence('lost_items', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM lost_items), false);
 SELECT setval(pg_get_serial_sequence('notifications', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM notifications), false);
 SELECT setval(pg_get_serial_sequence('claim_requests', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM claim_requests), false);
 SELECT setval(pg_get_serial_sequence('match_records', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM match_records), false);
+SELECT setval(pg_get_serial_sequence('support_knowledge_sources', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM support_knowledge_sources), false);
+SELECT setval(pg_get_serial_sequence('support_knowledge_chunks', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM support_knowledge_chunks), false);
+SELECT setval(pg_get_serial_sequence('support_chat_messages', 'id'), (SELECT COALESCE(MAX(id), 0) + 1 FROM support_chat_messages), false);
 
--- 开启 HNSW 高维向量索引，加速匹配效率（1536 维 < pgvector HNSW 上限 2000）
-CREATE INDEX IF NOT EXISTS idx_lost_items_vector ON lost_items USING hnsw (vector vector_cosine_ops);
+-- 开启 HNSW 高维向量索引，加速匹配效率（1536 维 < pgvector HNSW 上限 2000）。
+-- 本地只跑 BM25 时可以不安装 pgvector，向量列和索引会跳过。
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'lost_items' AND column_name = 'vector'
+    ) THEN
+        EXECUTE 'CREATE INDEX IF NOT EXISTS idx_lost_items_vector ON lost_items USING hnsw (vector vector_cosine_ops)';
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_lost_items_status ON lost_items(status);
 CREATE INDEX IF NOT EXISTS idx_lost_items_direction ON lost_items(direction);
 CREATE INDEX IF NOT EXISTS idx_lost_items_type ON lost_items(item_type);
@@ -105,3 +169,7 @@ CREATE INDEX IF NOT EXISTS idx_claim_requests_item_id ON claim_requests(item_id)
 CREATE INDEX IF NOT EXISTS idx_claim_requests_requester ON claim_requests(requester_user_id);
 CREATE INDEX IF NOT EXISTS idx_claim_requests_owner ON claim_requests(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_claim_requests_created_at ON claim_requests(created_at);
+CREATE INDEX IF NOT EXISTS idx_support_knowledge_chunks_source_id ON support_knowledge_chunks(source_id);
+CREATE INDEX IF NOT EXISTS idx_support_chat_sessions_user_id ON support_chat_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_support_chat_sessions_anonymous_key ON support_chat_sessions(anonymous_key);
+CREATE INDEX IF NOT EXISTS idx_support_chat_messages_session_id ON support_chat_messages(session_id);

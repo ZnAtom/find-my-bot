@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted } from 'vue'
 import Header from './components/Header.vue'
+import SupportChatWidget from './components/SupportChatWidget.vue'
 import { useUserStore } from './stores/user'
 
 const userStore = useUserStore()
@@ -20,6 +21,7 @@ onMounted(() => {
         </transition>
       </router-view>
     </el-main>
+    <SupportChatWidget />
   </div>
 </template>
 

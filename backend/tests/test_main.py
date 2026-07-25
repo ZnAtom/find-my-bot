@@ -6,7 +6,8 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from app import app, _normalize_uploaded_image_urls, _rate_limit_buckets, serialize_item_for_user
+from app import app, _extract_school_response_text, _normalize_uploaded_image_urls, _rate_limit_buckets, serialize_item_for_user
+from embedding import embedding_enabled, encode_text
 
 client = TestClient(app)
 IMAGE_ANALYSIS_TEST_IMAGE_URL = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg"
@@ -32,6 +33,26 @@ def sensitive_item(contact_visibility="private"):
 def test_read_main():
     response = client.get("/docs")
     assert response.status_code == 200
+
+
+def test_embedding_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("EMBEDDING_ENABLED", "0")
+
+    assert embedding_enabled() is False
+    with pytest.raises(RuntimeError, match="disabled"):
+        encode_text("校园卡")
+
+
+def test_extract_school_response_text_supports_openai_choices():
+    data = {"choices": [{"message": {"content": '{"item_name":"黑色水杯"}'}}]}
+
+    assert _extract_school_response_text(data) == '{"item_name":"黑色水杯"}'
+
+
+def test_extract_school_response_text_supports_wrapped_output():
+    data = {"code": 0, "data": {"output": {"text": '{"item_name":"蓝色雨伞"}'}}}
+
+    assert _extract_school_response_text(data) == '{"item_name":"蓝色雨伞"}'
 
 @patch("app.get_db_connection")
 def test_api_lost_items_no_auth(mock_db):

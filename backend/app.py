@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Any, Optional, List
 from time import monotonic
 import httpx
 import base64
@@ -37,7 +37,7 @@ from auth import (
     safe_frontend_redirect,
     verify_csrf_origin,
 )
-from embedding import encode_text, encode_multimodal, init_model
+from embedding import encode_text, encode_multimodal, embedding_enabled, init_model
 from db import get_db_connection, release_db_connection
 from email_sender import send_match_email
 from retrieval import (
@@ -48,6 +48,7 @@ from retrieval import (
     rrf_fuse,
     rule_rerank,
 )
+from support import answer_support_chat, make_anonymous_key
 
 app = FastAPI(title="校园失物招领 API", version="1.0.0")
 
@@ -65,11 +66,16 @@ CAMPUS_MAP_TILE_TIMEOUT = float(os.environ.get("CAMPUS_MAP_TILE_TIMEOUT", "6"))
 
 @app.on_event("startup")
 def startup():
-    init_model()
-    asyncio.create_task(periodic_email_matcher())
+    if embedding_enabled():
+        init_model()
+        asyncio.create_task(periodic_email_matcher())
+    else:
+        logging.info("Embedding model disabled; vector search will use BM25 fallback.")
 
 async def periodic_email_matcher():
     while True:
+        conn = None
+        cur = None
         try:
             # Sleep first or wait for the specific time. Let's sleep for 24h.
             # In a real system, this would be cron-like, e.g. apscheduler.
@@ -77,6 +83,9 @@ async def periodic_email_matcher():
             logging.info("Running daily email matcher for active lost/found items...")
             conn = get_db_connection()
             cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            if not _lost_items_vector_column_exists(cur):
+                logging.info("lost_items.vector column missing; skip daily vector email matcher.")
+                continue
 
             # Active lost/found entries are matched against the opposite direction.
             cur.execute("""
@@ -109,11 +118,13 @@ async def periodic_email_matcher():
                         contact_person=item['contact_person'],
                         matched_items=matches
                     )
-            
-            cur.close()
-            release_db_connection(conn)
         except Exception as e:
             logging.error(f"Error in periodic_email_matcher: {e}")
+        finally:
+            if cur:
+                cur.close()
+            if conn:
+                release_db_connection(conn)
 
 app.add_middleware(
     CORSMiddleware,
@@ -132,7 +143,7 @@ ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 SCHOOL_API_URL = os.environ.get("SCHOOL_API_URL", "https://genaiapi.shanghaitech.edu.cn/api/v1/start")
 SCHOOL_API_KEY = os.environ.get("SCHOOL_API_KEY")
-SCHOOL_VISION_MODEL = os.environ.get("SCHOOL_VISION_MODEL", os.environ.get("SCHOOL_MODEL", "qwen2.5-vl-instruct"))
+SCHOOL_VISION_MODEL = os.environ.get("SCHOOL_VISION_MODEL", os.environ.get("SCHOOL_MODEL", "GPT-5.5"))
 VISION_MAX_IMAGES = int(os.environ.get("VISION_MAX_IMAGES", "10"))
 VISION_TIMEOUT_SECONDS = float(os.environ.get("VISION_TIMEOUT_SECONDS", "180"))
 VISION_CONNECT_TIMEOUT_SECONDS = float(os.environ.get("VISION_CONNECT_TIMEOUT_SECONDS", "10"))
@@ -151,14 +162,17 @@ UPLOAD_RATE_LIMIT_COUNT = int(os.environ.get("UPLOAD_RATE_LIMIT_COUNT", "20"))
 UPLOAD_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("UPLOAD_RATE_LIMIT_WINDOW_SECONDS", "3600"))
 IMAGE_ANALYSIS_RATE_LIMIT_COUNT = int(os.environ.get("IMAGE_ANALYSIS_RATE_LIMIT_COUNT", "10"))
 IMAGE_ANALYSIS_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("IMAGE_ANALYSIS_RATE_LIMIT_WINDOW_SECONDS", "3600"))
+SUPPORT_CHAT_ANON_RATE_LIMIT_COUNT = int(os.environ.get("SUPPORT_CHAT_ANON_RATE_LIMIT_COUNT", "20"))
+SUPPORT_CHAT_AUTH_RATE_LIMIT_COUNT = int(os.environ.get("SUPPORT_CHAT_AUTH_RATE_LIMIT_COUNT", "60"))
+SUPPORT_CHAT_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("SUPPORT_CHAT_RATE_LIMIT_WINDOW_SECONDS", "3600"))
 
 ITEM_TYPE_OPTIONS = {"证件卡片", "电子产品", "衣物鞋帽", "学习用品", "钱包钥匙", "其他"}
 
-IMAGE_ANALYSIS_PROMPT = """你是“校园失物招领图片信息提取器”。
+IMAGE_ANALYSIS_PROMPT = """你是校园失物招领平台的图片信息提取助手。
 
 任务：
-根据用户上传的图片，提取可直接用于发布失物招领记录的物品字段。
-只关注物品本身，不提取地点、时间、联系人、手机号、QQ、学号、证件号等信息。
+根据用户上传的一张或多张图片，提取可直接用于失物招领发布表单的物品信息。
+输出要简短但全面，只描述图片中明确可见的物品特征。
 只输出严格 JSON，不要解释，不要 Markdown，不要多余文本。
 
 规则：
@@ -166,7 +180,7 @@ IMAGE_ANALYSIS_PROMPT = """你是“校园失物招领图片信息提取器”�
 2. 多张图一起分析，合并重复信息。
 3. 物品名称要短而具体，优先包含颜色、品牌或类型，例如“黑色双肩包”“校园一卡通”“AirPods Pro 耳机”。
 4. 物品分类只能从以下 6 类里选最接近的一项：证件卡片、电子产品、衣物鞋帽、学习用品、钱包钥匙、其他。
-5. 描述要简短但完整，包含颜色、品牌、外观、数量、材质、特殊标记、包装或配件等可见特征。
+5. 描述控制在 1 到 2 句，包含颜色、品牌、外观、数量、材质、特殊标记、包装或配件等关键特征。
 6. 如果图片里出现姓名，只允许用“姓+同学”的形式描述，例如“卡面疑似有王同学姓名”；不要输出完整姓名。
 7. 不要输出手机号、QQ、学号、证件号、身份证号、条形码/二维码内容、邮箱等敏感信息。
 8. 不确定的字段返回空字符串；注意事项放入 notes。
@@ -389,6 +403,27 @@ class ImageAnalysisResponse(BaseModel):
     notes: List[str] = Field(default_factory=list)
 
 
+class SupportChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000)
+    session_id: Optional[str] = None
+    channel: str = "web"
+
+
+class SupportChatSource(BaseModel):
+    type: str
+    title: str
+    path: Optional[str] = None
+    snippet: Optional[str] = None
+
+
+class SupportChatResponse(BaseModel):
+    answer: str
+    sources: List[SupportChatSource] = Field(default_factory=list)
+    intent: str
+    session_id: str
+    item_results: List[dict[str, Any]] = Field(default_factory=list)
+
+
 
 # 数据库向量列维度（需与 pgvector column 定义一致）
 VECTOR_DIM = int(os.environ.get("VECTOR_DIM", "1536"))
@@ -486,12 +521,21 @@ def _iter_image_paths(image_url: Optional[str]) -> list[str]:
 
 def _image_to_data_url(path: str) -> str:
     resample = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
-    target_sizes = [VISION_IMAGE_MAX_SIDE, 1280, 1024, 768]
-    target_qualities = [VISION_IMAGE_JPEG_QUALITY, 75, 65]
+    target_sizes = []
+    for size in (VISION_IMAGE_MAX_SIDE, 1280, 1024, 768):
+        if size <= VISION_IMAGE_MAX_SIDE and size not in target_sizes:
+            target_sizes.append(size)
+    target_qualities = []
+    for quality in (VISION_IMAGE_JPEG_QUALITY, 75, 65):
+        if quality not in target_qualities:
+            target_qualities.append(quality)
 
     try:
+        started_at = monotonic()
+        original_bytes = os.path.getsize(path)
         with Image.open(path) as source:
             normalized = ImageOps.exif_transpose(source)
+            original_size = normalized.size
             if normalized.mode != "RGB":
                 # 统一转成 JPEG，减少 Base64 请求体体积，并避免方向元数据影响模型识别。
                 if "A" in normalized.getbands():
@@ -511,6 +555,18 @@ def _image_to_data_url(path: str) -> str:
                     encoded = buffer.getvalue()
                     if len(encoded) <= VISION_IMAGE_MAX_BYTES:
                         image_base64 = base64.b64encode(encoded).decode("utf-8")
+                        logging.info(
+                            "Prepared image for school analysis path=%s original=%sx%s/%dB encoded=%sx%s/%dB quality=%s elapsed=%.3fs",
+                            os.path.basename(path),
+                            original_size[0],
+                            original_size[1],
+                            original_bytes,
+                            candidate.size[0],
+                            candidate.size[1],
+                            len(encoded),
+                            quality,
+                            monotonic() - started_at,
+                        )
                         return f"data:image/jpeg;base64,{image_base64}"
     except HTTPException:
         raise
@@ -533,12 +589,8 @@ def _image_ref_to_school_url(image_ref: str) -> str:
 
 
 def _school_vision_model_candidates() -> list[str]:
-    configured = (SCHOOL_VISION_MODEL or "").strip()
-    candidates = []
-    for model_name in ("qwen2.5-vl-instruct", configured, "qwen-instruct"):
-        if model_name and model_name not in candidates:
-            candidates.append(model_name)
-    return candidates
+    configured = (SCHOOL_VISION_MODEL or "GPT-5.5").strip()
+    return [configured] if configured else ["GPT-5.5"]
 
 
 def _school_http_timeout() -> httpx.Timeout:
@@ -562,6 +614,49 @@ def _message_content_to_text(content) -> str:
                 parts.append(item)
         return "\n".join(part for part in parts if part)
     return str(content or "")
+
+
+def _extract_school_response_text(data) -> str:
+    if isinstance(data, str):
+        return data
+    if isinstance(data, list):
+        return "\n".join(_extract_school_response_text(item) for item in data if item)
+    if not isinstance(data, dict):
+        return str(data or "")
+
+    for error_key in ("error", "errmsg", "err_msg"):
+        error_value = data.get(error_key)
+        if error_value:
+            raise ValueError(f"school API error: {error_value}")
+    if data.get("success") is False:
+        raise ValueError(f"school API unsuccessful response: {data.get('message') or data.get('msg') or data.get('code')}")
+
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        choice = choices[0] or {}
+        if isinstance(choice, dict):
+            message = choice.get("message") or choice.get("delta") or {}
+            if isinstance(message, dict):
+                text = _message_content_to_text(message.get("content"))
+                if text:
+                    return text
+            for key in ("content", "text"):
+                text = _message_content_to_text(choice.get(key))
+                if text:
+                    return text
+
+    for key in ("data", "result", "output", "outputs", "response"):
+        if key in data:
+            text = _extract_school_response_text(data[key])
+            if text:
+                return text
+
+    for key in ("content", "text", "answer", "message", "msg"):
+        text = _message_content_to_text(data.get(key))
+        if text:
+            return text
+
+    raise ValueError(f"unsupported school API response keys: {', '.join(data.keys())}")
 
 
 def _parse_json_object(text: str) -> dict:
@@ -610,9 +705,11 @@ async def _call_school_image_analysis(image_refs: list[str]) -> ImageAnalysisRes
     if not SCHOOL_API_KEY:
         raise HTTPException(status_code=503, detail="图片识别服务未配置")
 
+    started_at = monotonic()
     content = [{"type": "text", "text": IMAGE_ANALYSIS_PROMPT}]
     for image_ref in image_refs:
         content.append({"type": "image_url", "image_url": {"url": _image_ref_to_school_url(image_ref)}})
+    prepare_elapsed = monotonic() - started_at
 
     headers = {
         "Content-Type": "application/json",
@@ -625,13 +722,24 @@ async def _call_school_image_analysis(image_refs: list[str]) -> ImageAnalysisRes
             "stream": False,
             "model": model_name,
             "messages": [{"role": "user", "content": content}],
-            "temperature": 0.1,
         }
+        payload_bytes = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
 
         try:
             transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+            request_started_at = monotonic()
             async with httpx.AsyncClient(timeout=_school_http_timeout(), transport=transport) as client:
                 response = await client.post(SCHOOL_API_URL, headers=headers, json=payload)
+            request_elapsed = monotonic() - request_started_at
+            logging.info(
+                "School image analysis response model=%s status=%s images=%d payload=%dB prepare=%.3fs request=%.3fs",
+                model_name,
+                response.status_code,
+                len(image_refs),
+                payload_bytes,
+                prepare_elapsed,
+                request_elapsed,
+            )
         except httpx.TimeoutException as exc:
             had_timeout = True
             logging.warning(
@@ -656,12 +764,16 @@ async def _call_school_image_analysis(image_refs: list[str]) -> ImageAnalysisRes
 
         try:
             data = response.json()
-            message = data["choices"][0]["message"]
-            content_text = _message_content_to_text(message.get("content"))
+            content_text = _extract_school_response_text(data)
             parsed = _parse_json_object(content_text)
             return _clean_analysis_result(parsed)
         except Exception as exc:
-            logging.warning("Image analysis parse failed with model=%s: %s", model_name, exc)
+            logging.warning(
+                "Image analysis parse failed with model=%s: %s body=%s",
+                model_name,
+                exc,
+                response.text[:1000],
+            )
             continue
 
     if had_timeout:
@@ -700,8 +812,57 @@ async def analyze_uploaded_images(payload: ImageAnalysisRequest, request: Reques
     return await _call_school_image_analysis(image_refs)
 
 
+@app.post("/api/support/chat", response_model=SupportChatResponse)
+async def support_chat(payload: SupportChatRequest, request: Request):
+    verify_csrf_origin(request)
+    current_user = get_optional_user(request)
+    if current_user:
+        _check_rate_limit(
+            request,
+            "support-chat-auth",
+            SUPPORT_CHAT_AUTH_RATE_LIMIT_COUNT,
+            SUPPORT_CHAT_RATE_LIMIT_WINDOW_SECONDS,
+        )
+    else:
+        _check_rate_limit(
+            request,
+            "support-chat-anon",
+            SUPPORT_CHAT_ANON_RATE_LIMIT_COUNT,
+            SUPPORT_CHAT_RATE_LIMIT_WINDOW_SECONDS,
+        )
+
+    channel = (payload.channel or "web").strip().lower()
+    if channel not in {"web", "qq", "api"}:
+        raise HTTPException(status_code=400, detail="无效客服接入渠道")
+
+    conn = get_db_connection()
+    try:
+        return await answer_support_chat(
+            conn,
+            message=payload.message,
+            user=current_user,
+            anonymous_key=make_anonymous_key(_client_rate_key(request)),
+            session_id=payload.session_id,
+            channel=channel,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError:
+        logging.exception("Support chat LLM call failed")
+        raise HTTPException(status_code=502, detail="智能客服暂时不可用，请稍后再试")
+    except HTTPException:
+        raise
+    except Exception:
+        logging.exception("Support chat failed")
+        raise HTTPException(status_code=500, detail="智能客服请求失败")
+    finally:
+        release_db_connection(conn)
+
+
 @lru_cache(maxsize=128)
 def _build_vector(item_name: str, location: Optional[str] = None, lost_time: Optional[str] = None, description: Optional[str] = None, image_url: Optional[str] = None) -> Optional[str]:
+    if not embedding_enabled():
+        return None
     try:
         image_paths = _iter_image_paths(image_url)
         # Search vectors intentionally exclude location/time so they describe only the item.
@@ -730,6 +891,18 @@ def serialize_row(row):
 def none_if_empty(val):
     """将空字符串转为 None，避免 PostgreSQL 解析空字符串报错"""
     return val if val not in (None, '') else None
+
+
+def _lost_items_vector_column_exists(cur) -> bool:
+    cur.execute(
+        """SELECT EXISTS (
+               SELECT 1
+               FROM information_schema.columns
+               WHERE table_name = 'lost_items'
+                 AND column_name = 'vector'
+           )"""
+    )
+    return bool(cur.fetchone()[0])
 
 
 def _get_claim_item_ids_for_user(cur, user: Optional[dict]) -> set[int]:
@@ -1589,11 +1762,16 @@ class MatchCheckRequest(LostItemCreate):
 @app.post("/api/match-check")
 def match_check(item: MatchCheckRequest, request: Request, limit: int = Query(10, ge=1)):
     direction, _ = _resolve_create_state(item.direction, item.status, item.post_type)
-    vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, item.image_url)
     target_direction = "found" if direction == "lost" else "lost"
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
+        has_vector_column = _lost_items_vector_column_exists(cur)
+        vector = (
+            _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, item.image_url)
+            if has_vector_column
+            else None
+        )
         lexical_params = [target_direction, "active"]
         cur.execute(
             """SELECT * FROM lost_items
@@ -1625,7 +1803,7 @@ def match_check(item: MatchCheckRequest, request: Request, limit: int = Query(10
             vector_items,
             bm25_items,
             min(limit, RETRIEVAL_CANDIDATE_LIMIT),
-            vector_weight=VECTOR_WEIGHT,
+            vector_weight=VECTOR_WEIGHT if vector else 0,
             bm25_weight=BM25_WEIGHT,
         )
         items = rule_rerank(fused, item)
@@ -1680,20 +1858,37 @@ def create_lost_item(item: LostItemCreate, request: Request):
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    vector = _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, image_url)
     try:
+        has_vector_column = _lost_items_vector_column_exists(cur)
+        vector = (
+            _build_vector(item.item_name, item.location, str(item.lost_time) if item.lost_time else "", item.description, image_url)
+            if has_vector_column
+            else None
+        )
+        columns = [
+            "item_name", "item_type", "description", "location", "storage_location",
+            "lost_time", "direction", "status", "contact_visibility", "image_url",
+            "contact_person", "contact_phone", "contact_qq", "contact_email", "user_id",
+        ]
+        placeholders = ["%s"] * len(columns)
+        values = [
+            item.item_name, none_if_empty(item.item_type),
+            none_if_empty(item.description), none_if_empty(item.location),
+            storage_location, none_if_empty(item.lost_time), direction, status, contact_visibility,
+            image_url, contact_person,
+            none_if_empty(item.contact_phone), none_if_empty(item.contact_qq), none_if_empty(item.contact_email),
+            current_user["id"] if current_user else None,
+        ]
+        if vector:
+            columns.append("vector")
+            placeholders.append("%s::vector")
+            values.append(vector)
+
         cur.execute(
-            """INSERT INTO lost_items
-               (item_name, item_type, description, location, storage_location, lost_time, direction, status, contact_visibility,
-                image_url, contact_person, contact_phone, contact_qq, contact_email, user_id, vector)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector) RETURNING *""",
-            (item.item_name, none_if_empty(item.item_type),
-             none_if_empty(item.description), none_if_empty(item.location),
-             storage_location, none_if_empty(item.lost_time), direction, status, contact_visibility,
-             image_url, contact_person,
-             none_if_empty(item.contact_phone), none_if_empty(item.contact_qq), none_if_empty(item.contact_email),
-             current_user["id"] if current_user else None,
-             none_if_empty(vector))
+            f"""INSERT INTO lost_items
+                ({", ".join(columns)})
+                VALUES ({", ".join(placeholders)}) RETURNING *""",
+            values,
         )
         conn.commit()
         new_item = cur.fetchone()
@@ -1764,7 +1959,7 @@ def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
         if not update_fields:
             raise HTTPException(status_code=400, detail="没有要更新的字段")
 
-        if item.item_name or item.description or item.location or item.found_time or item.image_url is not None:
+        if _lost_items_vector_column_exists(cur) and (item.item_name or item.description or item.location or item.found_time or item.image_url is not None):
             cur.execute(
                 "SELECT item_name, location, lost_time, description, image_url FROM lost_items WHERE id = %s",
                 (item_id,),
@@ -1777,8 +1972,9 @@ def update_lost_item(item_id: int, item: LostItemUpdate, request: Request):
                 new_desc = item.description or row["description"]
                 new_img = _normalize_uploaded_image_urls(item.image_url) if item.image_url is not None else row["image_url"]
                 vector = _build_vector(new_name, new_location, str(new_time) if new_time else "", new_desc, new_img)
-                update_fields.append("vector = %s::vector")
-                params.append(vector)
+                if vector:
+                    update_fields.append("vector = %s::vector")
+                    params.append(vector)
 
         update_fields.append("updated_at = CURRENT_TIMESTAMP")
         params.append(item_id)
@@ -1874,15 +2070,16 @@ def semantic_search(
     post_type: Optional[str] = None,
     limit: int = Query(10, ge=1),
 ):
-    try:
-        vec = encode_text(query)
-    except Exception:
-        raise HTTPException(status_code=500, detail="向量模型未就绪")
-
-    vector_str = _vector_str(vec)
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
+        vector_str = None
+        if _lost_items_vector_column_exists(cur) and embedding_enabled() and VECTOR_WEIGHT > 0:
+            try:
+                vector_str = _vector_str(encode_text(query))
+            except Exception:
+                logging.exception("Semantic vector search unavailable; falling back to BM25")
+
         lexical_where = "WHERE 1=1"
         lexical_params = []
         lexical_where = _append_item_filters(
@@ -1899,36 +2096,38 @@ def semantic_search(
         )
         lexical_items = cur.fetchall()
 
-        vector_where = "WHERE vector IS NOT NULL"
-        vector_params = [vector_str]
-        vector_where = _append_item_filters(
-            vector_where,
-            vector_params,
-            status=status,
-            direction=direction,
-            post_type=post_type,
-            item_type=item_type,
-        )
-        vector_params.extend([vector_str, RETRIEVAL_CANDIDATE_LIMIT])
-        cur.execute(
-            f"""SELECT *, 1 - (vector <=> %s::vector) AS similarity
-                FROM lost_items
-                {vector_where}
-                ORDER BY vector <=> %s::vector
-                LIMIT %s""",
-            vector_params,
-        )
-        vector_items = filter_vector_recall(
-            cur.fetchall(),
-            minimum_similarity=VECTOR_SIMILARITY_THRESHOLD,
-            maximum_drop=VECTOR_SIMILARITY_MAX_DROP,
-        )
+        vector_items = []
+        if vector_str:
+            vector_where = "WHERE vector IS NOT NULL"
+            vector_params = [vector_str]
+            vector_where = _append_item_filters(
+                vector_where,
+                vector_params,
+                status=status,
+                direction=direction,
+                post_type=post_type,
+                item_type=item_type,
+            )
+            vector_params.extend([vector_str, RETRIEVAL_CANDIDATE_LIMIT])
+            cur.execute(
+                f"""SELECT *, 1 - (vector <=> %s::vector) AS similarity
+                    FROM lost_items
+                    {vector_where}
+                    ORDER BY vector <=> %s::vector
+                    LIMIT %s""",
+                vector_params,
+            )
+            vector_items = filter_vector_recall(
+                cur.fetchall(),
+                minimum_similarity=VECTOR_SIMILARITY_THRESHOLD,
+                maximum_drop=VECTOR_SIMILARITY_MAX_DROP,
+            )
         bm25_items = bm25_recall(query, lexical_items, RETRIEVAL_CANDIDATE_LIMIT)
         items = rrf_fuse(
             vector_items,
             bm25_items,
             min(limit, RETRIEVAL_CANDIDATE_LIMIT),
-            vector_weight=VECTOR_WEIGHT,
+            vector_weight=VECTOR_WEIGHT if vector_str else 0,
             bm25_weight=BM25_WEIGHT,
         )
         current_user = get_optional_user(request)

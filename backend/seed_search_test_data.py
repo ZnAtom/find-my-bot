@@ -101,6 +101,19 @@ def seed(include_vectors: bool) -> None:
     inserted = 0
     skipped = 0
     try:
+        cur.execute(
+            """SELECT EXISTS (
+                   SELECT 1
+                   FROM information_schema.columns
+                   WHERE table_name = 'lost_items'
+                     AND column_name = 'vector'
+               )"""
+        )
+        has_vector_column = bool(cur.fetchone()[0])
+        if include_vectors and not has_vector_column:
+            print("lost_items.vector column does not exist; seed records will be inserted without vectors.")
+            include_vectors = False
+
         for item in SEED_ITEMS:
             item_name, item_type, description, location, storage_location, lost_time, direction = item
             cur.execute(
@@ -114,22 +127,31 @@ def seed(include_vectors: bool) -> None:
                 continue
 
             vector = vector_string(encode_text(search_text(item))) if include_vectors else None
+            columns = [
+                "item_name", "item_type", "description", "location", "storage_location",
+                "lost_time", "direction", "status", "contact_visibility", "contact_person", "user_id",
+            ]
+            placeholders = ["%s", "%s", "%s", "%s", "%s", "%s", "%s", "'active'", "'private'", "%s", "NULL"]
+            values = [
+                item_name,
+                item_type,
+                description,
+                location,
+                storage_location,
+                lost_time,
+                direction,
+                SEED_OWNER,
+            ]
+            if vector:
+                columns.append("vector")
+                placeholders.append("%s::vector")
+                values.append(vector)
+
             cur.execute(
-                """INSERT INTO lost_items
-                   (item_name, item_type, description, location, storage_location, lost_time,
-                    direction, status, contact_visibility, contact_person, user_id, vector)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, 'active', 'private', %s, NULL, %s::vector)""",
-                (
-                    item_name,
-                    item_type,
-                    description,
-                    location,
-                    storage_location,
-                    lost_time,
-                    direction,
-                    SEED_OWNER,
-                    vector,
-                ),
+                f"""INSERT INTO lost_items
+                   ({", ".join(columns)})
+                   VALUES ({", ".join(placeholders)})""",
+                values,
             )
             inserted += 1
 

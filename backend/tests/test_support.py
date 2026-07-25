@@ -1,0 +1,115 @@
+import sys
+import os
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from support import (
+    _extract_llm_response_text,
+    build_sources,
+    detect_intent,
+    make_anonymous_key,
+)
+
+
+def test_support_intent_detects_personal_data_for_logged_in_user():
+    assert detect_intent("我的发布有哪些", {"id": 1}) == "personal_data"
+
+
+def test_support_intent_detects_item_search():
+    assert detect_intent("有没有人捡到校园卡", None) == "item_search"
+    assert detect_intent("我丢了一个学生证", None) == "item_search"
+
+
+def test_anonymous_key_is_hashed():
+    key = make_anonymous_key("127.0.0.1")
+
+    assert key != "127.0.0.1"
+    assert len(key) == 40
+
+
+def test_extract_llm_response_text_supports_openai_choices():
+    data = {"choices": [{"message": {"content": "回答内容"}}]}
+
+    assert _extract_llm_response_text(data) == "回答内容"
+
+
+def test_item_sources_do_not_include_contact_fields():
+    sources = build_sources(
+        [],
+        [
+            {
+                "id": 1,
+                "item_name": "校园卡",
+                "direction": "found",
+                "status": "active",
+                "item_type": "证件卡片",
+                "location": "教学楼",
+                "url": "/#/lost/1",
+            }
+        ],
+        None,
+        intent="item_search",
+    )
+
+    serialized = str(sources)
+    assert "contact" not in serialized
+    assert "phone" not in serialized
+    assert "qq" not in serialized.lower()
+
+
+def test_sources_hide_knowledge_and_personal_context():
+    sources = build_sources(
+        [
+            {
+                "path": "doc/support/faq.md",
+                "chunk_index": 0,
+                "title": "常见问题",
+                "source_title": "FAQ",
+                "content": "平台使用说明",
+            }
+        ],
+        [
+            {
+                "id": 1,
+                "item_name": "校园卡",
+                "direction": "found",
+                "status": "active",
+                "item_type": "证件卡片",
+                "location": "教学楼",
+                "url": "/#/lost/1",
+            }
+        ],
+        {"items": [{"id": 1}], "claims": []},
+        intent="general",
+    )
+
+    assert sources == []
+
+
+def test_item_search_sources_only_include_items():
+    sources = build_sources(
+        [
+            {
+                "path": "doc/support/faq.md",
+                "chunk_index": 0,
+                "title": "常见问题",
+                "source_title": "FAQ",
+                "content": "平台使用说明",
+            }
+        ],
+        [
+            {
+                "id": 1,
+                "item_name": "校园卡",
+                "direction": "found",
+                "status": "active",
+                "item_type": "证件卡片",
+                "location": "教学楼",
+                "url": "/#/lost/1",
+            }
+        ],
+        {"items": [{"id": 1}], "claims": []},
+        intent="item_search",
+    )
+
+    assert [source["type"] for source in sources] == ["item"]

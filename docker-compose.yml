@@ -21,7 +21,10 @@ services:
       - app-network
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        INSTALL_EMBEDDING_DEPS: ${INSTALL_EMBEDDING_DEPS:-0}
     container_name: findmybot-backend
     restart: unless-stopped
     ports:
@@ -36,8 +39,14 @@ services:
       - DB_HOST=db
       - DB_PORT=5432
       - HF_ENDPOINT=https://hf-mirror.com
+      - HF_LOCAL_ONLY=1
+      - EMBEDDING_ENABLED=${EMBEDDING_ENABLED:-0}
+      - EMBEDDING_MODEL_PATH=/app/model/models--Qwen--Qwen3-VL-Embedding-2B
+      - SUPPORT_DOCS_DIR=/app/doc/support
     volumes:
       - ./backend/uploads:/app/uploads
+      - ./doc:/app/doc:ro
+      - ./model:/app/model:ro
     depends_on:
       db:
         condition: service_healthy

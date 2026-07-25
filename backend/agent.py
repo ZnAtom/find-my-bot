@@ -6,6 +6,11 @@ import os
 import json
 import httpx
 from typing import Optional, List, Dict, Any
+
+from config_env import load_project_env
+
+load_project_env()
+
 from embedding import encode_text, encode_image
 import psycopg2
 import psycopg2.extras

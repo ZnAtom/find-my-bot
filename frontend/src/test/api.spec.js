@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { firstSafeImageUrl, resolveImageUrl } from '../api'
+import { firstSafeImageUrl, resolveImageUrl, supportApi } from '../api'
 
 describe('image URL helpers', () => {
   it('allows uploaded images from the app path', () => {
@@ -10,5 +10,9 @@ describe('image URL helpers', () => {
   it('blocks external image URLs', () => {
     expect(resolveImageUrl('https://example.com/tracker.jpg')).toBe('')
     expect(firstSafeImageUrl('https://example.com/tracker.jpg,/uploads/item.jpg')).toBe('/uploads/item.jpg')
+  })
+
+  it('exports support chat api', () => {
+    expect(typeof supportApi.chat).toBe('function')
   })
 })

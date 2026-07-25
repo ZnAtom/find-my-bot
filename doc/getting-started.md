@@ -1,230 +1,380 @@
-# 从零开始启动 (FoundIt)
+# 本地启动指南
 
-> **注**：本项目目前同时支持 **Docker**（适合本地开发和协作）和 **Kubernetes (K8s)**（适合生产环境全自动部署）。本教程的前半部分针对 Docker 协作者，K8s 生产部署教程请参见文末。
+本文档描述通用 Linux 本地运行方式。推荐模式是：Docker Compose 启动 PostgreSQL，FastAPI 和 Vite 直接跑在宿主机，必要时用 nginx 暴露到局域网 80 端口。当前服务器的域名/IP 细节放在 [server-local.md](server-local.md)，不要把那里的值当成其他设备的默认配置。
 
-## 环境要求
+## 1. 环境要求
 
-- [Docker](https://docs.docker.com/get-docker/) + Docker Compose（Docker Desktop 自带）
-- Conda 环境（推荐）或 Python 3.12+
+基础依赖：
 
-## 1. 克隆项目
+- Ubuntu 22.04 或同类 Linux
+- Python 3.10+，推荐 3.12
+- Node.js 22+ 和 npm
+- Docker + Docker Compose，用于默认数据库
+- `psql`
+- 可选：PostgreSQL + pgvector，如果不想用 Docker 数据库
+- 可选：nginx，用于局域网或域名无端口访问
+- 可选：`gettext-base`，用于提供 `envsubst` 生成 nginx 本地配置
+
+embedding 依赖由脚本安装到 `backend/.venv`：
+
+- `torch`
+- `sentence-transformers`
+- `rank-bm25`
+- `jieba`
+
+默认相对 embedding 模型路径：
+
+```text
+model/models--Qwen--Qwen3-VL-Embedding-2B
+```
+
+## 2. `.env` 关键配置
+
+首次运行时可从 `.env.example` 复制：
 
 ```bash
-git clone <repo-url> find-my-bot
+cp .env.example .env
+```
+
+通用本地配置形态：
+
+```text
+DB_MODE=docker
+DB_HOST=127.0.0.1
+DB_PORT=5433
+DB_USER=appuser
+DB_PASSWORD=password
+DB_NAME=lostfound
+
+BACKEND_HOST=127.0.0.1
+BACKEND_PORT=8000
+FRONTEND_HOST=127.0.0.1
+FRONTEND_PORT=5173
+
+EMBEDDING_ENABLED=0
+INSTALL_EMBEDDING_DEPS=0
+HF_LOCAL_ONLY=1
+EMBEDDING_MODEL_PATH=model/models--Qwen--Qwen3-VL-Embedding-2B
+VECTOR_DIM=1536
+
+SUPPORT_AUTO_IMPORT=1
+SUPPORT_DOCS_DIR=doc/support
+```
+
+如果当前设备已经安装 pgvector、已放置模型，并希望搜索和客服一启动就使用 embedding，再把下面两项改成 `1`：
+
+```text
+INSTALL_EMBEDDING_DEPS=1
+EMBEDDING_ENABLED=1
+```
+
+图像识别和客服 LLM 依赖学校 GenAI API：
+
+```text
+SCHOOL_API_URL=https://genaiapi.shanghaitech.edu.cn/api/v1/start
+SCHOOL_API_KEY=<不要提交到 Git>
+SCHOOL_VISION_MODEL=GPT-5.5
+SUPPORT_LLM_MODEL=GPT-5.5
+```
+
+Casdoor 登录需要保持回调地址和访问入口一致。例如局域网域名入口：
+
+```text
+FRONTEND_BASE_URL=http://your-host.example
+CASDOOR_REDIRECT_URI=http://your-host.example/api/auth/callback
+CORS_ORIGINS=http://your-host.example,http://your-lan-ip
+CSRF_TRUSTED_ORIGINS=http://your-host.example,http://your-lan-ip
+```
+
+## 3. 首次安装依赖
+
+```bash
 cd find-my-bot
+bash dev-local.sh setup
 ```
 
-## 2. 启动 Docker 服务（数据库 + 前端）
+脚本会：
+
+1. 创建或复用 `backend/.venv`。
+2. 安装后端 Python 依赖。
+3. 在 `INSTALL_EMBEDDING_DEPS=1` 时安装 embedding 相关依赖。
+4. 安装前端 npm 依赖。
+
+如果本地没有模型且允许联网下载，可以临时设置：
 
 ```bash
-docker compose up -d --build
+HF_LOCAL_ONLY=0 bash dev-local.sh setup
 ```
 
-首次构建会下载镜像并安装依赖。
+下载完成后建议恢复 `HF_LOCAL_ONLY=1`，让服务只从本地模型目录加载。
 
-## 3. 配置 Python 环境
+## 4. 数据库准备
+
+默认脚本使用 Docker Compose 的 `db` 服务。如果要改用宿主机 PostgreSQL：
 
 ```bash
-# 创建并激活 conda 环境（推荐）
-conda create -n findmybot python=3.12 -y
-conda activate findmybot
-
-# 安装后端依赖
-pip install uvicorn fastapi psycopg2-binary pillow python-multipart
+sudo apt-get install postgresql postgresql-contrib
 ```
 
-如果已有 hugging_face 环境，直接装依赖即可：
+数据库至少需要：
+
+```sql
+CREATE USER appuser WITH PASSWORD 'password';
+CREATE DATABASE lostfound OWNER appuser;
+```
+
+pgvector 推荐安装并启用。如果系统源有对应包，可以直接安装 PostgreSQL 版本匹配的 pgvector 包。如果没有包，可从源码构建。下面示例以 PostgreSQL 14 为例，其他版本需要替换 `postgresql-server-dev-14`：
 
 ```bash
-conda activate hugging_face
-pip install uvicorn fastapi psycopg2-binary pillow python-multipart
+sudo apt-get install build-essential postgresql-server-dev-14
+git clone --branch v0.8.5 https://github.com/pgvector/pgvector.git /tmp/pgvector
+cd /tmp/pgvector
+make
+sudo make install
 ```
 
-> `sentence-transformers`、`torch` 等 AI 相关包如已在环境中则无需重复安装。
-
-## 4. 启动后端
+启用扩展：
 
 ```bash
-cd backend
-python -m uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+sudo -u postgres psql -d lostfound -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
-> **首次使用**：需要将 `embedding.py` 中的 `local_files_only` 改为 `False`（或将环境变量 `HF_LOCAL_ONLY` 设为 `"0"`），让模型从 HuggingFace 下载到本地缓存。下载完成后改回 `True`（或设置 `HF_LOCAL_ONLY=1`）即可跳过网络请求直接加载。
-
-首次启动会自动下载 Qwen 嵌入模型（约 4GB）和 BGE 重排序模型（约 2.9GB），需等待几分钟。国内网络可设置 `HF_ENDPOINT=https://hf-mirror.com` 使用镜像加速。
-
-## 5. 验证服务
-
-启动完成后 Docker 容器应处于 `Up` 状态：
+检查：
 
 ```bash
-docker compose ps
+PGPASSWORD=password psql -h 127.0.0.1 -p 5432 -U appuser -d lostfound \
+  -c "SELECT extversion FROM pg_extension WHERE extname = 'vector';"
 ```
 
-预期输出：
+启动脚本会执行 `backend/schema.sql`。如果 pgvector 可用，会自动创建：
 
-```
-NAME                  STATUS
-findmybot-db          Up (healthy)
-findmybot-frontend    Up
+```sql
+lost_items.vector VECTOR(1536)
 ```
 
-### 测试后端 API
+并创建 HNSW 索引：
+
+```sql
+idx_lost_items_vector
+```
+
+如果 pgvector 不可用，schema 会跳过向量列，搜索和客服会退回 BM25 词法能力。
+
+## 5. 启动服务
 
 ```bash
-# 查看统计
-curl http://localhost:8000/api/stats
+bash dev-local.sh start
+```
 
-# 创建一条失物信息
-curl -X POST http://localhost:8000/api/lost-items \
+重启：
+
+```bash
+bash dev-local.sh restart
+```
+
+查看状态：
+
+```bash
+bash dev-local.sh status
+```
+
+正常状态类似：
+
+```text
+[db] ok (docker 127.0.0.1:5433/lostfound)
+[backend] ok pid=... :8000
+[frontend] ok pid=... :5173
+```
+
+`start/restart/db` 会自动同步客服知识库：
+
+```text
+doc/support/*.md -> support_knowledge_sources / support_knowledge_chunks
+```
+
+需要强制重导入时：
+
+```bash
+bash dev-local.sh support-import
+```
+
+## 6. 访问地址
+
+本机直接访问：
+
+```text
+http://127.0.0.1:5173/
+```
+
+配置 nginx 后，局域网设备访问：
+
+```text
+http://your-lan-ip/
+```
+
+配置 DNS 或 hosts 后，域名访问：
+
+```text
+http://your-host.example/
+```
+
+注意：
+
+- 没有配置 HTTPS 时，`https://...` 会拒绝连接，浏览器必须使用 `http://`。
+- 域名如果解析到内网 IP，只能同局域网、校园网或 VPN 内访问。
+- 如果 IP 能访问但域名拒绝，通常是客户端 DNS、代理规则或浏览器自动升级 HTTPS 的问题。
+
+## 7. nginx 配置
+
+项目内只提交模板：
+
+```text
+deploy/nginx/foundit-local.conf.template
+```
+
+按当前设备生成本地配置：
+
+```bash
+SERVER_NAMES="localhost 127.0.0.1" \
+BACKEND_UPSTREAM="127.0.0.1:8000" \
+FRONTEND_UPSTREAM="127.0.0.1:5173" \
+envsubst '$SERVER_NAMES $BACKEND_UPSTREAM $FRONTEND_UPSTREAM' \
+  < deploy/nginx/foundit-local.conf.template \
+  > deploy/nginx/foundit-local.conf
+```
+
+安装到系统 nginx：
+
+```bash
+sudo install -m 0644 deploy/nginx/foundit-local.conf /etc/nginx/sites-available/foundit-local.conf
+sudo ln -sf /etc/nginx/sites-available/foundit-local.conf /etc/nginx/sites-enabled/foundit-local.conf
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+配置会把：
+
+```text
+/api/*      -> 127.0.0.1:8000
+/uploads/*  -> 127.0.0.1:8000
+其他路径     -> 127.0.0.1:5173
+```
+
+## 8. 常用验证命令
+
+前端：
+
+```bash
+curl -sS -o /tmp/index.html -w "%{http_code}" http://127.0.0.1:5173/
+```
+
+后端未登录状态：
+
+```bash
+curl -sS -o /tmp/me.json -w "%{http_code}" http://127.0.0.1:5173/api/auth/me
+```
+
+预期是 `401`，表示 API 可达但未登录。
+
+语义搜索：
+
+```bash
+curl "http://127.0.0.1:8000/api/semantic-search?query=学生证&limit=5"
+```
+
+客服：
+
+```bash
+curl -sS \
+  -H "Origin: http://localhost:5173" \
   -H "Content-Type: application/json" \
-  -d '{"item_name":"校园卡","description":"蓝色","location":"图书馆","contact_person":"张三"}'
-
-# 关键字搜索
-curl "http://localhost:8000/api/search?query=校园卡"
-
-# 语义搜索（含 BGE 重排序）
-curl "http://localhost:8000/api/semantic-search?query=钱包&rerank=true"
+  -d '{"message":"我丢了一个学生证，请帮我寻找","channel":"web"}' \
+  http://127.0.0.1:8000/api/support/chat
 ```
 
-### 访问前端
+## 9. 测试
 
-浏览器打开 http://localhost:5173
-
-## 6. 服务端口一览
-
-| 服务         | 地址                      | 说明                     |
-| ------------ | ------------------------- | ------------------------ |
-| 前端管理后台 | http://localhost:5173     | Vue 3 + Element Plus     |
-| 后端 API     | http://localhost:8000/api | FastAPI，自动生成 /docs  |
-| 数据库       | localhost:5432            | PostgreSQL 16 + pgvector |
-
-## 7. 架构说明
-
-```
-Docker                      本地 (Conda)
-┌─────────────┐            ┌─────────────────┐
-│  db         │◄───────────│  uvicorn         │
-│  PostgreSQL │   5432     │  FastAPI :8000   │
-│  + pgvector │            │  + Qwen 嵌入模型  │
-├─────────────┤            │  + BGE 重排序    │
-│  frontend   │            └─────────────────┘
-│  Vite :5173 │
-└─────────────┘
-```
-
-- **数据库 + 前端** 由 Docker 托管
-- **后端** 在本地 Conda 环境运行，利用 MPS/CUDA 加速 AI 推理
-
-## 8. 开发模式
-
-- **前端**：Docker 源码挂载，编辑 `frontend/src/` 即时热更新
-- **后端**：`--reload` 自动监听文件变更重启
-- **数据库**：修改 `backend/schema.sql` 后需手动重建表或重启 db 容器
+后端测试：
 
 ```bash
-docker compose restart db
+backend/.venv/bin/python -m pytest -q backend/tests/test_retrieval.py backend/tests/test_support.py
 ```
 
-## 9. 常用命令
+前端测试和构建：
 
 ```bash
-# 停止 Docker 服务
-docker compose down
+cd frontend
+npm test
+npm run build
+```
 
-# 停止并删除数据卷（数据库数据会丢失）
-docker compose down -v
+## 10. Docker 模式
 
-# 查看日志
-docker compose logs -f frontend
-docker compose logs db
+Docker 编排仍保留：
 
-# 进入数据库
-docker compose exec db psql -U appuser -d lostfound
-
-# 重建 Docker 服务
+```bash
 docker compose up -d --build
 ```
 
-## 10. 数据库表结构
+当前配置特点：
 
-| 表                | 说明                                          |
-| ----------------- | --------------------------------------------- |
-| `users`         | 用户信息（学号、姓名、联系方式）              |
-| `lost_items`    | 失物/招领信息，含 pgvector 向量列用于语义匹配 |
-| `match_records` | 失物匹配记录（相似度打分）                    |
+- db 暴露到 `127.0.0.1:5433`。
+- backend 暴露到 `127.0.0.1:8000`。
+- frontend 暴露到 `127.0.0.1:5173`。
+- backend 挂载 `./doc` 和 `./model`。
+- `EMBEDDING_ENABLED` 默认可通过环境变量控制，Docker 内 CPU 推理会比较慢。
 
-初始化 SQL 脚本：`backend/schema.sql`，数据库容器首次启动时自动执行。
+如果 Docker Hub 拉镜像超时，可以优先使用当前本地运行方式。
 
-## 11. QQ 机器人（可选）
+## 11. 常见问题
 
-根 `docker-compose.yml` 中已预留 napcat + astrbot 服务的配置（默认注释）。需要时取消注释并确保对应的配置文件已放置在 `qqbot/` 目录下。
+### 客服匿名发送返回 403
 
-## 12. 常见问题
+检查访问地址是否在：
 
-### 端口冲突
-
-如果本机已运行 PostgreSQL 或 8000/5173 端口被占用，修改 `docker-compose.yml` 中的端口映射：
-
-```yaml
-ports:
-  - "15432:5432"  # 将 5432 改为其他端口
+```text
+CSRF_TRUSTED_ORIGINS
+CORS_ORIGINS
 ```
 
-### 构建失败
+通过 nginx 无端口访问时，origin 是 `http://your-host.example` 或 `http://your-lan-ip`，不是旧的 `:5173` 地址。
+
+### 登录提示 Redirect URI 不允许
+
+Casdoor 后台需要加入当前回调地址，例如：
+
+```text
+http://your-host.example/api/auth/callback
+```
+
+### 客服或搜索没有使用 embedding
+
+确认：
+
+```text
+EMBEDDING_ENABLED=1
+HF_LOCAL_ONLY=1
+EMBEDDING_MODEL_PATH=...
+```
+
+并确认数据库有 pgvector：
+
+```sql
+SELECT extversion FROM pg_extension WHERE extname = 'vector';
+```
+
+### 修改 `doc/support/*.md` 后是否要手动导入
+
+通常不需要。`SUPPORT_AUTO_IMPORT=1` 时，`dev-local.sh start/restart/db` 会自动同步。只有需要立即强制刷新时才运行：
 
 ```bash
-# 清理缓存后重试
-docker compose down -v
-docker compose build --no-cache
-docker compose up -d
+bash dev-local.sh support-import
 ```
 
-### 数据库数据持久化
-
-数据库数据存储在 Docker 命名卷 `pgdata` 中。只要不执行 `docker compose down -v`，数据会一直保留。
-
-### 模型下载慢 / 网络不通
-
-设置 HuggingFace 镜像：
+### 看日志
 
 ```bash
-HF_ENDPOINT=https://hf-mirror.com python -m uvicorn app:app ...
+bash dev-local.sh logs
+tail -f .local/logs/backend.log
+tail -f .local/logs/frontend.log
 ```
-
-模型下载完成后，后续可用 `HF_LOCAL_ONLY=1` 跳过网络请求直接加载本地缓存。
-
----
-
-## 13. Kubernetes (K8s) 生产部署（全自动 GitOps）
-
-如果您有 K8s 集群，本项目已经配置了完整的 **GitHub Actions + ArgoCD** 自动化发布流水线。
-
-### 自动化发布流程
-
-您**不需要**在服务器上执行任何手动命令，只要在本地推送代码，即可自动上线：
-
-```bash
-git add .
-git commit -m "feat: your new feature"
-git push origin develop
-```
-
-**发生了什么？**
-
-1. **GitHub Actions** 会自动拉取代码并打包最新的 Docker 镜像（包含 Frontend, Backend, DB），并推送到 GitHub Container Registry (ghcr.io)。
-2. 镜像推送完成后，机器人会自动向仓库的 `k8s/kustomization.yaml` 推送带有最新镜像 tag 的 `chore(cd)` 提交。
-3. **ArgoCD** 会监听到 Git 仓库的变化，自动将最新的容器同步部署到 K8s 集群中。
-4. **零停机更新**：K8s 会自动拉取新镜像并平滑重启 Pod。对于 Backend，部署配置中自带 `readinessProbe`，K8s 会等待大模型下载完毕、FastAPI 完全就绪后再将流量放行，不会出现 502。
-
-### K8s 目录结构说明
-
-相关的部署配置位于项目根目录的 `k8s/` 下：
-
-- `backend.yaml` / `frontend.yaml` / `db.yaml`：各服务的 Deployment 和 Service。
-- `ingress.yaml`：Nginx Ingress 路由配置（已集成 `cert-manager`，可全自动申请 HTTPS 证书）。
-- `kustomization.yaml`：资源入口及自动版本管理。
-
-### HTTPS 配置注意事项
-
-K8s 环境下已开启全自动 HTTPS（Let's Encrypt DNS-01），请确保您绑定的 CNAME 直接指向 K8s 集群的公网入口（例如 `andromeda.geekpie.club` 或 `acm.shanghaitech.edu.cn`），**不要**经过二次非透明代理（如额外的 Caddy 强制 HTTPS 拦截），否则会因为无法进行 SSL 握手导致访问失败。

@@ -2,7 +2,7 @@
 
 import psycopg2.extras
 
-from app import _build_vector
+from app import _build_vector, _lost_items_vector_column_exists
 from db import get_db_connection, release_db_connection
 
 
@@ -12,6 +12,9 @@ def main() -> None:
     updated = 0
     skipped = 0
     try:
+        if not _lost_items_vector_column_exists(cur):
+            print("lost_items.vector column does not exist; install pgvector/apply schema before rebuilding item vectors.")
+            return
         cur.execute("SELECT id, item_name, description, image_url FROM lost_items ORDER BY id")
         items = cur.fetchall()
         for item in items:

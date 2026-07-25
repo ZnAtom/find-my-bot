@@ -3,7 +3,8 @@
 本文档描述当前代码中的搜索、发布前匹配和匹配度计算逻辑。实现入口：
 
 - `backend/retrieval.py`：分词、词法相关度、BM25L、向量过滤、RRF 和展示分数。
-- `backend/app.py`：`/api/search`、`/api/semantic-search`、`/api/match-check`。
+- `backend/app.py`：`/api/search`、`/api/semantic-search`、`/api/match-check`、`/api/support/chat` 入口。
+- `backend/support.py`：智能客服的物品库查询 `search_public_items()`。
 - `backend/embedding.py`：`Qwen/Qwen3-VL-Embedding-2B` 模型加载与编码。
 
 ## 1. 三种查询路径
@@ -13,6 +14,7 @@
 | 关键字搜索 | `GET /api/search` | PostgreSQL `ILIKE` | 前端当前请求最多 200 条并分页 |
 | 混合搜索 | `GET /api/semantic-search` | BM25L + pgvector + 加权 RRF | 最多 10 条，可以少于 10 条 |
 | 发布前匹配 | `POST /api/match-check` | 相反方向的混合召回 + 规则重排 | 最多 10 条，可以少于 10 条 |
+| 客服物品查询 | `POST /api/support/chat` | `item_search` 意图下调用 BM25L + pgvector + 加权 RRF | 默认最多 5 条，可以少于 5 条 |
 
 未输入搜索词时，物品库使用 `GET /api/lost-items?all=true`，一次返回当前状态、方向和分类筛选下的全部记录。这不属于相关性搜索。
 
@@ -50,6 +52,7 @@
 | `校园卡` | 一卡通、校园一卡通、学生卡 |
 | `一卡通` | 校园卡、校园一卡通、学生卡 |
 | `学生卡` | 校园卡、一卡通、校园一卡通 |
+| `学生证` | 学生卡、证件、证件卡片 |
 
 扩展关系用于 BM25 查询和词法相关度，不会退化成只匹配“卡”等单字，因此不会把卡包、钥匙等全部召回。
 
@@ -179,24 +182,37 @@ V_cal = clamp((V - 0.30) / 0.50, 0, 1)
 | `VECTOR_SIMILARITY_MAX_DROP` | `0.08` | 相对最佳向量结果允许的最大分差 |
 | `RESULT_RELEVANCE_THRESHOLD` | `0.65` | 最终结果最低综合匹配度 |
 
-## 11. 维护命令
+## 11. 智能客服物品查询
+
+客服在 `detect_intent()` 判断用户问题属于 `item_search` 时，会调用 `backend/support.py` 的 `search_public_items()`。这条路径现在和 `/api/semantic-search` 使用同一套混合检索思路：
+
+1. 只查询 `status = 'active'` 的公开候选。
+2. 同时覆盖寻物 `lost` 和招领 `found`，并在回答中展示方向。
+3. 如果 `lost_items.vector` 存在、pgvector 可用、`EMBEDDING_ENABLED=1`，用 Qwen embedding 编码用户问题并做向量召回。
+4. 同时做 BM25L 召回。
+5. 用加权 RRF 融合两路候选。
+6. 用 `hybrid_match_score()` 和 `RESULT_RELEVANCE_THRESHOLD` 做最终过滤。
+
+客服 sources 的策略不同于搜索页：只有物品查询会返回 sources，且 sources 只包含脱敏后的物品摘要和详情入口；知识库 RAG 来源不会返回给前端。
+
+## 12. 维护命令
 
 重建全部历史记录的内容向量：
 
 ```bash
-conda activate hugging_face
-cd /Users/sagiri/WorkSpace/find-my-bot/backend
-python rebuild_content_vectors.py
+cd backend
+./.venv/bin/python rebuild_content_vectors.py
 ```
 
 插入或补齐搜索测试数据：
 
 ```bash
-python seed_search_test_data.py
+cd backend
+./.venv/bin/python seed_search_test_data.py
 ```
 
 运行检索测试：
 
 ```bash
-python -m pytest -q tests/test_retrieval.py
+backend/.venv/bin/python -m pytest -q backend/tests/test_retrieval.py backend/tests/test_support.py
 ```

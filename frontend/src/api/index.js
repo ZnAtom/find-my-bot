@@ -110,6 +110,10 @@ export const uploadApi = {
     api.post('/image-analysis', { image_urls: imageUrls }, { timeout: imageAnalysisTimeout, ...config }),
 }
 
+export const supportApi = {
+  chat: (data, config = {}) => api.post('/support/chat', data, { timeout: 90000, ...config }),
+}
+
 function sameOriginUploadUrl(url) {
   try {
     const parsed = new URL(url, window.location.origin)

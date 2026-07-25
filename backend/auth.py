@@ -1,7 +1,6 @@
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Optional
 from urllib.parse import urlencode, urlparse
 
@@ -9,15 +8,12 @@ import httpx
 import jwt
 import psycopg2
 import psycopg2.extras
-from dotenv import load_dotenv
 from fastapi import HTTPException, Request
 
+from config_env import load_project_env
 from db import get_db_connection, release_db_connection
 
-# 自动加载项目根目录的 .env 文件
-_dotenv_path = Path(__file__).resolve().parent.parent / ".env"
-if _dotenv_path.exists():
-    load_dotenv(_dotenv_path)
+load_project_env()
 
 
 CASDOOR_ENDPOINT = os.environ.get("CASDOOR_ENDPOINT", "https://auth.geekpie.club").rstrip("/")

@@ -1,5 +1,22 @@
 # 数据库安全运维
 
+本文档分为本地运行和 K8s 生产运维两部分。当前本机调试使用本地 PostgreSQL；K8s CronJob 仍保留为生产部署方案。
+
+## 本地运行注意事项
+
+当前本地数据库监听在 `127.0.0.1:5432`，不应直接暴露到局域网或公网。局域网访问只通过 nginx 暴露 HTTP 80 端口，前端、后端和数据库都保持本机回环监听。
+
+本地 `.env` 中的数据库密码、Casdoor secret、学校 GenAI API key 不应提交到 Git。排查问题时可以打印非敏感配置，例如端口、host、开关状态；不要在日志或文档中粘贴完整 key。
+
+本地备份可以使用：
+
+```bash
+PGPASSWORD=password pg_dump -h 127.0.0.1 -p 5432 -U appuser -d lostfound \
+  | gzip > lostfound-$(date +%Y%m%d-%H%M%S).sql.gz
+```
+
+备份文件可能包含联系方式、申请留言和通知内容，应放在非仓库目录，并设置为仅当前用户可读。
+
 ## 敏感联系方式清理
 
 后端镜像内置 `cleanup_sensitive_data.py`。K8s 中的 `foundit-data-retention` CronJob 默认每天执行一次，清理 90 天前已完成或已过期记录中的联系方式。
