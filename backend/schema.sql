@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS users (
     phone VARCHAR(20),
     qq VARCHAR(20),
     email VARCHAR(100),
+    school_email VARCHAR(320),
+    contact_email VARCHAR(320),
+    school_email_verified_at TIMESTAMP,
     casdoor_sub VARCHAR(200) UNIQUE,
     casdoor_name VARCHAR(200),
     role VARCHAR(20) DEFAULT 'user',
@@ -64,6 +67,7 @@ CREATE TABLE IF NOT EXISTS claim_requests (
     request_type VARCHAR(20) NOT NULL DEFAULT 'claim',
     requester_name VARCHAR(100) NOT NULL,
     requester_contact VARCHAR(200) NOT NULL,
+    requester_school_email VARCHAR(320),
     message TEXT,
     status VARCHAR(20) NOT NULL DEFAULT 'submitted',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -121,6 +125,10 @@ CREATE TABLE IF NOT EXISTS support_chat_messages (
 );
 
 -- 兼容已存在的旧表：CREATE TABLE IF NOT EXISTS 不会为旧表补新增列。
+ALTER TABLE users ADD COLUMN IF NOT EXISTS school_email VARCHAR(320);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_email VARCHAR(320);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS school_email_verified_at TIMESTAMP;
+ALTER TABLE claim_requests ADD COLUMN IF NOT EXISTS requester_school_email VARCHAR(320);
 ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS storage_location VARCHAR(200);
 ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS found_time TIMESTAMP;
 ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS direction VARCHAR(20) NOT NULL DEFAULT 'lost';
@@ -128,6 +136,12 @@ ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFA
 ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS contact_visibility VARCHAR(20) NOT NULL DEFAULT 'private';
 ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS contact_email VARCHAR(100);
 ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- 旧 email 无法证明完成过学校邮箱验证，只迁移为可修改的联系邮箱。
+-- school_email 会在用户下次通过 Casdoor 登录时绑定并记录真实验证时间。
+UPDATE users
+SET contact_email = email
+WHERE contact_email IS NULL AND email IS NOT NULL;
 
 DO $$
 BEGIN
@@ -163,10 +177,12 @@ CREATE INDEX IF NOT EXISTS idx_lost_items_direction ON lost_items(direction);
 CREATE INDEX IF NOT EXISTS idx_lost_items_type ON lost_items(item_type);
 CREATE INDEX IF NOT EXISTS idx_lost_items_user_id ON lost_items(user_id);
 CREATE INDEX IF NOT EXISTS idx_lost_items_contact_visibility ON lost_items(contact_visibility);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_school_email_unique ON users(LOWER(school_email)) WHERE school_email IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
 CREATE INDEX IF NOT EXISTS idx_claim_requests_item_id ON claim_requests(item_id);
 CREATE INDEX IF NOT EXISTS idx_claim_requests_requester ON claim_requests(requester_user_id);
+CREATE INDEX IF NOT EXISTS idx_claim_requests_school_email ON claim_requests(requester_school_email);
 CREATE INDEX IF NOT EXISTS idx_claim_requests_owner ON claim_requests(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_claim_requests_created_at ON claim_requests(created_at);
 CREATE INDEX IF NOT EXISTS idx_support_knowledge_chunks_source_id ON support_knowledge_chunks(source_id);

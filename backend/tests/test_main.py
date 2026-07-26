@@ -7,11 +7,19 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app import app, _extract_school_response_text, _normalize_uploaded_image_urls, _rate_limit_buckets, serialize_item_for_user
+from auth import normalize_school_email, require_casdoor_email_verified, require_verified_school_email
 from embedding import embedding_enabled, encode_text
 
 client = TestClient(app)
 IMAGE_ANALYSIS_TEST_IMAGE_URL = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg"
-AUTH_USER = {"id": 1, "student_id": "test", "name": "测试用户", "role": "user"}
+AUTH_USER = {
+    "id": 1,
+    "student_id": "test",
+    "name": "测试用户",
+    "role": "user",
+    "school_email": "test@shanghaitech.edu.cn",
+    "school_email_verified_at": "2026-07-26T10:00:00",
+}
 ADMIN_USER = {"id": 2, "student_id": "admin", "name": "管理员", "role": "admin"}
 
 
@@ -19,8 +27,12 @@ def sensitive_item(contact_visibility="private"):
     return {
         "id": 10,
         "item_name": "校园卡",
+        "item_type": "证件卡片",
         "direction": "found",
         "status": "active",
+        "description": "印有姓名和学号的校园卡",
+        "image_url": "/uploads/card.jpg",
+        "location": "上海科技大学 · 生活区 · 学生宿舍8号楼 · 一楼",
         "contact_visibility": contact_visibility,
         "contact_person": "王同学",
         "contact_phone": "13800000000",
@@ -121,6 +133,40 @@ def test_normalize_uploaded_image_urls_requires_uploaded_file(tmp_path, monkeypa
     assert exc.value.status_code == 400
 
 
+def test_sensitive_uploaded_image_requires_verified_school_user(tmp_path, monkeypatch):
+    upload_dir = tmp_path / "uploads"
+    upload_dir.mkdir()
+    (upload_dir / "card.jpg").write_bytes(b"image")
+    monkeypatch.setattr("app.UPLOAD_DIR", str(upload_dir))
+
+    cursor = type("Cursor", (), {
+        "execute": lambda self, *_args, **_kwargs: None,
+        "fetchall": lambda self: [{
+            "id": 10,
+            "item_type": "证件卡片",
+            "user_id": AUTH_USER["id"],
+            "image_url": "/uploads/card.jpg",
+        }],
+        "close": lambda self: None,
+    })()
+    conn = type("Connection", (), {"cursor": lambda self, **_kwargs: cursor})()
+
+    with patch("app.get_db_connection", return_value=conn), \
+         patch("app.release_db_connection"), \
+         patch("app.get_optional_user", return_value=None):
+        anonymous_response = client.get("/uploads/card.jpg")
+
+    assert anonymous_response.status_code == 403
+
+    with patch("app.get_db_connection", return_value=conn), \
+         patch("app.release_db_connection"), \
+         patch("app.get_optional_user", return_value=AUTH_USER):
+        verified_response = client.get("/uploads/card.jpg")
+
+    assert verified_response.status_code == 200
+    assert verified_response.headers["cache-control"] == "private, no-store"
+
+
 def test_private_contact_fields_are_masked_for_anonymous_user():
     item = serialize_item_for_user(sensitive_item(), None)
 
@@ -129,6 +175,13 @@ def test_private_contact_fields_are_masked_for_anonymous_user():
     assert item["contact_qq"] is None
     assert item["contact_email"] is None
     assert item["storage_location"] is None
+    assert item["item_name"] == "证件卡片"
+    assert item["description"] is None
+    assert item["image_url"] is None
+    assert item["location"] == "生活区 · 学生宿舍8号楼"
+    assert item["sensitive_content_hidden"] is True
+    assert item["contact_access_granted"] is False
+    assert item["storage_access_granted"] is False
 
 
 def test_private_contact_fields_are_visible_to_owner_and_admin():
@@ -141,29 +194,161 @@ def test_private_contact_fields_are_visible_to_owner_and_admin():
     assert admin_item["storage_location"] == "图书馆前台"
 
 
-def test_logged_in_contact_fields_are_visible_to_authenticated_user():
-    item = serialize_item_for_user(sensitive_item("logged_in"), {"id": 3, "role": "user"})
+def test_logged_in_contact_fields_require_verified_school_email_and_do_not_reveal_storage():
+    viewer = {
+        "id": 3,
+        "role": "user",
+        "school_email": "viewer@shanghaitech.edu.cn",
+        "school_email_verified_at": "2026-07-26T10:00:00",
+    }
+    item = serialize_item_for_user(sensitive_item("logged_in"), viewer)
 
     assert item["contact_person"] == "王同学"
     assert item["contact_phone"] == "13800000000"
-    assert item["storage_location"] == "图书馆前台"
+    assert item["description"] == "印有姓名和学号的校园卡"
+    assert item["image_url"] == "/uploads/card.jpg"
+    assert item["storage_location"] is None
+    assert item["storage_access_granted"] is False
 
 
 def test_public_contact_fields_are_visible_to_anonymous_user():
-    item = serialize_item_for_user(sensitive_item("public"), None)
+    source = sensitive_item("public")
+    source["item_type"] = "其他"
+    item = serialize_item_for_user(source, None)
 
     assert item["contact_person"] == "王同学"
     assert item["contact_phone"] == "13800000000"
     assert item["contact_qq"] == "123456"
     assert item["contact_email"] == "test@example.com"
+    assert item["storage_location"] is None
 
 
 def test_claimed_contact_fields_are_visible_to_related_claim_user():
-    item = serialize_item_for_user(sensitive_item("claimed"), {"id": 3, "role": "user"}, {10})
+    viewer = {
+        "id": 3,
+        "role": "user",
+        "school_email": "viewer@shanghaitech.edu.cn",
+        "school_email_verified_at": "2026-07-26T10:00:00",
+    }
+    item = serialize_item_for_user(sensitive_item("claimed"), viewer, {10})
 
     assert item["contact_qq"] == "123456"
     assert item["contact_email"] == "test@example.com"
     assert item["storage_location"] == "图书馆前台"
+    assert item["storage_access_granted"] is True
+
+
+def test_school_email_validation_accepts_root_and_subdomains():
+    assert normalize_school_email(" Student@ShanghaiTech.edu.cn ") == "student@shanghaitech.edu.cn"
+    assert normalize_school_email("student@mail.shanghaitech.edu.cn") == "student@mail.shanghaitech.edu.cn"
+
+
+def test_casdoor_explicitly_unverified_email_is_rejected():
+    with pytest.raises(HTTPException) as exc:
+        require_casdoor_email_verified({"email_verified": False})
+    assert exc.value.status_code == 403
+
+    require_casdoor_email_verified({"email_verified": True})
+    require_casdoor_email_verified({})
+
+
+@pytest.mark.parametrize("email", [
+    "student@example.com",
+    "student@shanghaitech.edu.cn.example.com",
+    "student@fakeshanghaitech.edu.cn",
+    "not-an-email",
+])
+def test_school_email_validation_rejects_non_school_domains(email):
+    with pytest.raises(HTTPException) as exc:
+        normalize_school_email(email)
+    assert exc.value.status_code == 403
+    assert "上海科技大学邮箱" in exc.value.detail
+
+
+def test_verified_school_email_is_required_for_claims():
+    with pytest.raises(HTTPException) as exc:
+        require_verified_school_email({"id": 3, "school_email": "student@shanghaitech.edu.cn"})
+    assert exc.value.status_code == 403
+
+
+class ClaimTestCursor:
+    def __init__(self):
+        self.statements = []
+        self.next_row = None
+
+    def execute(self, sql, params=None):
+        self.statements.append((sql, params))
+        if "FROM lost_items" in sql and "FOR UPDATE" in sql:
+            self.next_row = {
+                "id": 10,
+                "item_name": "校园卡",
+                "direction": "found",
+                "status": "active",
+                "user_id": None,
+                "contact_person": "匿名",
+                "storage_location": "二号门保安室",
+            }
+        elif "SELECT COUNT(*)" in sql:
+            self.next_row = (0,)
+        elif "INSERT INTO claim_requests" in sql:
+            self.next_row = {
+                "id": 20,
+                "item_id": 10,
+                "requester_user_id": AUTH_USER["id"],
+                "owner_user_id": None,
+                "request_type": "claim",
+                "requester_name": "测试用户",
+                "requester_contact": AUTH_USER["school_email"],
+                "requester_school_email": AUTH_USER["school_email"],
+                "message": None,
+                "status": "completed",
+                "created_at": "2026-07-26T10:00:00",
+            }
+
+    def fetchone(self):
+        return self.next_row
+
+    def close(self):
+        pass
+
+
+class ClaimTestConnection:
+    def __init__(self):
+        self.test_cursor = ClaimTestCursor()
+        self.committed = False
+        self.rolled_back = False
+
+    def cursor(self, **_kwargs):
+        return self.test_cursor
+
+    def commit(self):
+        self.committed = True
+
+    def rollback(self):
+        self.rolled_back = True
+
+
+@patch("app.release_db_connection")
+@patch("app.get_current_user", return_value=AUTH_USER)
+def test_claim_records_school_email_snapshot_before_returning_storage(mock_user, mock_release):
+    conn = ClaimTestConnection()
+    with patch("app.get_db_connection", return_value=conn):
+        response = client.post(
+            "/api/lost-items/10/claim",
+            headers={"Origin": "http://localhost:5173"},
+            json={
+                "requester_name": "测试用户",
+                "requester_contact": AUTH_USER["school_email"],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["requester_school_email"] == AUTH_USER["school_email"]
+    assert response.json()["storage_location"] == "二号门保安室"
+    assert conn.committed is True
+    insert = next(entry for entry in conn.test_cursor.statements if "INSERT INTO claim_requests" in entry[0])
+    assert "requester_school_email" in insert[0]
+    assert AUTH_USER["school_email"] in insert[1]
 
 
 def test_campus_map_tile_rejects_out_of_range_zoom():

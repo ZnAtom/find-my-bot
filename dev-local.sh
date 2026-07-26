@@ -423,6 +423,8 @@ init_schema() {
     (cd "$BACKEND_DIR" && "$PYTHON_BIN" migrate_item_state.py)
     echo "===== migrate_flow_fields.py ====="
     (cd "$BACKEND_DIR" && "$PYTHON_BIN" migrate_flow_fields.py)
+    echo "===== migrate_identity_email.py ====="
+    (cd "$BACKEND_DIR" && "$PYTHON_BIN" migrate_identity_email.py)
   } >>"$DB_INIT_LOG" 2>&1
   echo "[db] schema done, log=$DB_INIT_LOG"
   sync_support_knowledge

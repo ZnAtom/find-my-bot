@@ -22,6 +22,7 @@ CASDOOR_CLIENT_SECRET = os.environ.get("CASDOOR_CLIENT_SECRET")
 CASDOOR_REDIRECT_URI = os.environ.get("CASDOOR_REDIRECT_URI", "http://localhost:8000/api/auth/callback")
 CASDOOR_SCOPE = os.environ.get("CASDOOR_SCOPE", "openid profile email")
 FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "http://localhost:5173").rstrip("/")
+SCHOOL_EMAIL_DOMAIN = os.environ.get("SCHOOL_EMAIL_DOMAIN", "shanghaitech.edu.cn").strip().lower().lstrip(".")
 JWT_SECRET = os.environ.get("JWT_SECRET")
 JWT_ALGORITHM = "HS256"
 SESSION_COOKIE = os.environ.get("SESSION_COOKIE_NAME", "foundit_session")
@@ -134,12 +135,71 @@ def _display_name_from_userinfo(userinfo: dict) -> str:
     ) or "Casdoor 用户"
 
 
+def normalize_school_email(value: Optional[str]) -> str:
+    email = str(value or "").strip().lower()
+    if email.count("@") != 1 or len(email) > 320 or any(char.isspace() for char in email):
+        raise HTTPException(status_code=403, detail="仅允许使用上海科技大学邮箱登录")
+    local_part, domain = email.rsplit("@", 1)
+    if (
+        not local_part
+        or len(local_part) > 64
+        or local_part.startswith(".")
+        or local_part.endswith(".")
+        or ".." in local_part
+        or not domain
+        or not SCHOOL_EMAIL_DOMAIN
+        or (
+            domain != SCHOOL_EMAIL_DOMAIN
+            and not domain.endswith(f".{SCHOOL_EMAIL_DOMAIN}")
+        )
+    ):
+        raise HTTPException(status_code=403, detail="仅允许使用上海科技大学邮箱登录")
+    return email
+
+
+def require_casdoor_email_verified(userinfo: dict):
+    properties = userinfo.get("properties") or {}
+    verification_value = None
+    for source in (userinfo, properties):
+        for key in ("email_verified", "emailVerified"):
+            if key in source:
+                verification_value = source[key]
+                break
+        if verification_value is not None:
+            break
+
+    if verification_value is None:
+        return
+    if isinstance(verification_value, str):
+        is_verified = verification_value.strip().lower() in {"true", "1", "yes"}
+    else:
+        is_verified = verification_value is True or verification_value == 1
+    if not is_verified:
+        raise HTTPException(status_code=403, detail="Casdoor 学校邮箱尚未完成验证")
+
+
+def has_verified_school_email(user: Optional[dict]) -> bool:
+    if not user or not user.get("school_email") or not user.get("school_email_verified_at"):
+        return False
+    try:
+        return normalize_school_email(user["school_email"]) == str(user["school_email"]).strip().lower()
+    except HTTPException:
+        return False
+
+
+def require_verified_school_email(user: dict) -> str:
+    if not has_verified_school_email(user):
+        raise HTTPException(status_code=403, detail="账号缺少已验证的上海科技大学邮箱，请重新登录或联系管理员")
+    return str(user["school_email"]).strip().lower()
+
+
 def _serialize_user(row) -> dict:
     user = dict(row)
     for key, value in list(user.items()):
         if isinstance(value, datetime):
             user[key] = value.isoformat()
     user.pop("casdoor_sub", None)
+    user["email"] = user.get("contact_email") or user.get("school_email")
     return user
 
 
@@ -151,7 +211,8 @@ def get_or_create_user(userinfo: dict):
 
     student_id = _student_id_from_userinfo(userinfo)
     name = _display_name_from_userinfo(userinfo)
-    email = userinfo.get("email")
+    require_casdoor_email_verified(userinfo)
+    school_email = normalize_school_email(userinfo.get("email"))
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -159,14 +220,17 @@ def get_or_create_user(userinfo: dict):
         cur.execute("SELECT * FROM users WHERE casdoor_sub = %s", (casdoor_sub,))
         row = cur.fetchone()
         if row:
-            # 已存在用户：更新 Casdoor 原始名，并获取/更新邮箱
-            new_email = email if email else row["email"]
+            existing_school_email = str(row["school_email"] or "").strip().lower()
+            if existing_school_email and existing_school_email != school_email:
+                raise HTTPException(status_code=409, detail="Casdoor 学校邮箱与已绑定身份不一致，请联系管理员")
             cur.execute(
                 """UPDATE users
-                   SET casdoor_name = %s, email = %s
+                   SET casdoor_name = %s,
+                       school_email = COALESCE(school_email, %s),
+                       school_email_verified_at = COALESCE(school_email_verified_at, CURRENT_TIMESTAMP)
                    WHERE id = %s
                    RETURNING *""",
-                (userinfo.get("name"), new_email, row["id"]),
+                (userinfo.get("name"), school_email, row["id"]),
             )
             updated_row = cur.fetchone()
             conn.commit()
@@ -175,26 +239,30 @@ def get_or_create_user(userinfo: dict):
         cur.execute("SELECT * FROM users WHERE student_id = %s", (student_id,))
         row = cur.fetchone()
         if row:
-            # 链接 Casdoor 账号到已有本地用户，并获取/更新邮箱
-            new_email = email if email else row["email"]
+            existing_school_email = str(row["school_email"] or "").strip().lower()
+            if existing_school_email and existing_school_email != school_email:
+                raise HTTPException(status_code=409, detail="Casdoor 学校邮箱与已绑定身份不一致，请联系管理员")
             cur.execute(
                 """UPDATE users
                    SET casdoor_sub = %s,
                        casdoor_name = %s,
-                       email = %s
+                       school_email = COALESCE(school_email, %s),
+                       school_email_verified_at = COALESCE(school_email_verified_at, CURRENT_TIMESTAMP)
                    WHERE id = %s
                    RETURNING *""",
-                (casdoor_sub, userinfo.get("name"), new_email, row["id"]),
+                (casdoor_sub, userinfo.get("name"), school_email, row["id"]),
             )
             updated_row = cur.fetchone()
             conn.commit()
             return _serialize_user(updated_row), False
 
         cur.execute(
-            """INSERT INTO users (student_id, name, email, casdoor_sub, casdoor_name, role)
-               VALUES (%s, %s, %s, %s, %s, %s)
+            """INSERT INTO users
+               (student_id, name, email, school_email, school_email_verified_at,
+                casdoor_sub, casdoor_name, role)
+               VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s, %s, %s)
                RETURNING *""",
-            (student_id, name, email, casdoor_sub, userinfo.get("name"), "user"),
+            (student_id, name, school_email, school_email, casdoor_sub, userinfo.get("name"), "user"),
         )
         new_row = cur.fetchone()
         conn.commit()
@@ -202,6 +270,9 @@ def get_or_create_user(userinfo: dict):
     except psycopg2.IntegrityError:
         conn.rollback()
         raise HTTPException(status_code=409, detail="本地用户创建失败：学号或 Casdoor 账号已存在")
+    except HTTPException:
+        conn.rollback()
+        raise
     finally:
         cur.close()
         release_db_connection(conn)

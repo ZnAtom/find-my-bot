@@ -18,5 +18,8 @@ python /app/migrate_item_state.py
 echo "Running flow fields migration..."
 python /app/migrate_flow_fields.py
 
+echo "Running identity email migration..."
+python /app/migrate_identity_email.py
+
 echo "Starting FastAPI..."
 exec uvicorn app:app --host 0.0.0.0 --port 8000

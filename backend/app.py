@@ -1,10 +1,9 @@
 from fastapi import FastAPI, HTTPException, Query, File, Form, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse, Response
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 from typing import Any, Optional, List
-from time import monotonic
+from time import monotonic, time
 import httpx
 import base64
 import hmac
@@ -31,17 +30,25 @@ from auth import (
     exchange_code_for_token,
     get_casdoor_userinfo,
     get_current_user,
+    has_verified_school_email,
     get_or_create_user,
     get_optional_user,
     make_login_url,
     new_state,
     require_admin,
+    require_verified_school_email,
     safe_frontend_redirect,
     verify_csrf_origin,
 )
 from embedding import encode_text, encode_multimodal, embedding_enabled, init_model
 from db import get_db_connection, release_db_connection
 from email_sender import send_match_email
+from item_privacy import (
+    can_view_sensitive_content as _can_view_sensitive_content,
+    is_item_owner_or_admin as _is_item_owner_or_admin,
+    is_sensitive_item as _is_sensitive_item,
+    mask_sensitive_content,
+)
 from retrieval import (
     bm25_recall,
     build_search_text,
@@ -91,12 +98,14 @@ async def periodic_email_matcher():
 
             # Active lost/found entries are matched against the opposite direction.
             cur.execute("""
-                SELECT l.id, l.item_name, l.direction, l.contact_person, u.email, l.vector
+                SELECT l.id, l.item_name, l.direction, l.contact_person,
+                       COALESCE(u.contact_email, u.school_email, u.email) AS notification_email,
+                       l.vector
                 FROM lost_items l
                 LEFT JOIN users u ON l.user_id = u.id
                 WHERE l.status = 'active'
                   AND l.direction IN ('lost', 'found')
-                  AND u.email IS NOT NULL
+                  AND COALESCE(u.contact_email, u.school_email, u.email) IS NOT NULL
                   AND l.vector IS NOT NULL
             """)
             items = cur.fetchall()
@@ -115,7 +124,7 @@ async def periodic_email_matcher():
                 matches = cur.fetchall()
                 if matches:
                     await send_match_email(
-                        to_email=item['email'],
+                        to_email=item['notification_email'],
                         item_name=item['item_name'],
                         contact_person=item['contact_person'],
                         matched_items=matches
@@ -162,6 +171,7 @@ VECTOR_SIMILARITY_MAX_DROP = float(os.environ.get("VECTOR_SIMILARITY_MAX_DROP", 
 RESULT_RELEVANCE_THRESHOLD = float(os.environ.get("RESULT_RELEVANCE_THRESHOLD", "0.65"))
 UPLOAD_RATE_LIMIT_COUNT = int(os.environ.get("UPLOAD_RATE_LIMIT_COUNT", "20"))
 UPLOAD_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("UPLOAD_RATE_LIMIT_WINDOW_SECONDS", "3600"))
+UNASSOCIATED_UPLOAD_TTL_SECONDS = int(os.environ.get("UNASSOCIATED_UPLOAD_TTL_SECONDS", "3600"))
 IMAGE_ANALYSIS_RATE_LIMIT_COUNT = int(os.environ.get("IMAGE_ANALYSIS_RATE_LIMIT_COUNT", "10"))
 IMAGE_ANALYSIS_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("IMAGE_ANALYSIS_RATE_LIMIT_WINDOW_SECONDS", "3600"))
 SUPPORT_CHAT_ANON_RATE_LIMIT_COUNT = int(os.environ.get("SUPPORT_CHAT_ANON_RATE_LIMIT_COUNT", "20"))
@@ -201,8 +211,54 @@ IMAGE_ANALYSIS_PROMPT = """你是校园失物招领平台的图片信息提取�
   "notes": []
 }"""
 
-# 挂载上传目录为静态文件服务
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+@app.get("/uploads/{filename}")
+def get_uploaded_image(filename: str, request: Request):
+    if (
+        not filename
+        or filename != os.path.basename(filename)
+        or "/" in filename
+        or "\\" in filename
+        or os.path.splitext(filename)[1].lower() not in ALLOWED_EXTENSIONS
+    ):
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    file_path = os.path.abspath(os.path.join(UPLOAD_DIR, filename))
+    upload_root = os.path.abspath(UPLOAD_DIR)
+    if not file_path.startswith(upload_root + os.sep) or not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    image_url = f"/uploads/{filename}"
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    try:
+        cur.execute(
+            """SELECT id, item_type, user_id, image_url
+               FROM lost_items
+               WHERE POSITION(%s IN COALESCE(image_url, '')) > 0""",
+            (image_url,),
+        )
+        linked_items = [
+            dict(row)
+            for row in cur.fetchall()
+            if image_url in {part.strip() for part in str(row["image_url"] or "").split(",")}
+        ]
+    finally:
+        cur.close()
+        release_db_connection(conn)
+
+    if not linked_items:
+        age_seconds = max(0, time() - os.path.getmtime(file_path))
+        if age_seconds > UNASSOCIATED_UPLOAD_TTL_SECONDS:
+            raise HTTPException(status_code=404, detail="图片不存在或已过期")
+        return FileResponse(file_path, headers={"Cache-Control": "private, no-store"})
+
+    current_user = get_optional_user(request)
+    if any(_is_sensitive_item(item) and not _can_view_sensitive_content(item, current_user) for item in linked_items):
+        raise HTTPException(status_code=403, detail="该图片仅向已认证校内用户展示")
+
+    is_sensitive = any(_is_sensitive_item(item) for item in linked_items)
+    cache_control = "private, no-store" if is_sensitive else "public, max-age=86400"
+    return FileResponse(file_path, headers={"Cache-Control": cache_control})
 
 _rate_limit_buckets: dict[tuple[str, str], list[float]] = {}
 
@@ -415,6 +471,7 @@ class ProfileUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
     qq: Optional[str] = None
+    contact_email: Optional[str] = None
     email: Optional[str] = None
 
 
@@ -1105,34 +1162,44 @@ def _lost_items_vector_column_exists(cur) -> bool:
 def _get_claim_item_ids_for_user(cur, user: Optional[dict]) -> set[int]:
     if not user:
         return set()
+    verified_requester_id = user["id"] if has_verified_school_email(user) else -1
     try:
         cur.execute(
             """SELECT item_id
                FROM claim_requests
-               WHERE requester_user_id = %s OR owner_user_id = %s""",
-            (user["id"], user["id"]),
+               WHERE (requester_user_id = %s AND requester_school_email IS NOT NULL)
+                  OR owner_user_id = %s""",
+            (verified_requester_id, user["id"]),
         )
         return {row[0] for row in cur.fetchall()}
-    except psycopg2.errors.UndefinedTable:
+    except (psycopg2.errors.UndefinedTable, psycopg2.errors.UndefinedColumn):
         cur.connection.rollback()
         return set()
+
+
+def _has_claim_access(item: dict, claim_item_ids: Optional[set[int]]) -> bool:
+    return bool(claim_item_ids and item.get("id") in claim_item_ids)
 
 
 def _can_view_item_contact(item: dict, user: Optional[dict], claim_item_ids: Optional[set[int]] = None) -> bool:
     if not item:
         return False
+    if _is_item_owner_or_admin(item, user) or _has_claim_access(item, claim_item_ids):
+        return True
+    if _is_sensitive_item(item) and not has_verified_school_email(user):
+        return False
     visibility = item.get("contact_visibility") or "private"
     if visibility == "public":
         return True
-    if not user:
+    if not has_verified_school_email(user):
         return False
-    if user.get("role") == "admin" or item.get("user_id") == user.get("id"):
-        return True
     if visibility == "logged_in":
         return True
-    if claim_item_ids and item.get("id") in claim_item_ids:
-        return True
     return False
+
+
+def _can_view_item_storage(item: dict, user: Optional[dict], claim_item_ids: Optional[set[int]] = None) -> bool:
+    return _is_item_owner_or_admin(item, user) or _has_claim_access(item, claim_item_ids)
 
 
 def serialize_item_for_user(row, user: Optional[dict], claim_item_ids: Optional[set[int]] = None):
@@ -1140,12 +1207,25 @@ def serialize_item_for_user(row, user: Optional[dict], claim_item_ids: Optional[
     if item is None:
         return None
     item.pop("vector", None)
-    if not _can_view_item_contact(item, user, claim_item_ids):
+    item["sensitive_content_hidden"] = False
+    can_view_contact = _can_view_item_contact(item, user, claim_item_ids)
+    can_view_storage = _can_view_item_storage(item, user, claim_item_ids)
+    item["contact_access_granted"] = can_view_contact
+    item["storage_access_granted"] = can_view_storage
+
+    if not can_view_contact:
         item["contact_person"] = "匿名"
         item["contact_phone"] = None
         item["contact_qq"] = None
         item["contact_email"] = None
+
+    if not can_view_storage:
         item["storage_location"] = None
+
+    if not _can_view_sensitive_content(item, user):
+        item.update(mask_sensitive_content(item, user))
+        item["sensitive_content_hidden"] = True
+
     return item
 
 
@@ -1313,6 +1393,7 @@ class UserCreate(BaseModel):
     phone: Optional[str] = None
     qq: Optional[str] = None
     email: Optional[str] = None
+    contact_email: Optional[str] = None
 
 class UserUpdate(BaseModel):
     role: Optional[str] = None
@@ -1320,12 +1401,14 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
     qq: Optional[str] = None
     email: Optional[str] = None
+    contact_email: Optional[str] = None
 
 class UserProfileUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
     qq: Optional[str] = None
     email: Optional[str] = None
+    contact_email: Optional[str] = None
 
 class UserResponse(BaseModel):
     id: int
@@ -1333,6 +1416,10 @@ class UserResponse(BaseModel):
     name: str
     phone: Optional[str] = None
     qq: Optional[str] = None
+    school_email: Optional[str] = None
+    contact_email: Optional[str] = None
+    school_email_verified_at: Optional[str] = None
+    # 兼容滚动部署期间仍读取 email 的旧前端。
     email: Optional[str] = None
     role: str
     created_at: str
@@ -1387,6 +1474,9 @@ class LostItemResponse(BaseModel):
     contact_qq: Optional[str] = None
     contact_email: Optional[str] = None
     user_id: Optional[int] = None
+    sensitive_content_hidden: bool = False
+    contact_access_granted: bool = False
+    storage_access_granted: bool = False
     created_at: str
     updated_at: str
 
@@ -1413,6 +1503,7 @@ class ClaimRequestResponse(BaseModel):
     request_type: str
     requester_name: str
     requester_contact: str
+    requester_school_email: Optional[str] = None
     message: Optional[str] = None
     status: str
     created_at: str
@@ -1420,6 +1511,7 @@ class ClaimRequestResponse(BaseModel):
     item_direction: Optional[str] = None
     requester_user_name: Optional[str] = None
     owner_user_name: Optional[str] = None
+    storage_location: Optional[str] = None
 
 
 def _coerce_contact_visibility(value: Optional[str]) -> str:
@@ -1463,9 +1555,10 @@ def update_me(update: UserProfileUpdate, request: Request):
     if update.qq is not None:
         update_fields.append("qq = %s")
         params.append(none_if_empty(update.qq))
-    if update.email is not None:
-        update_fields.append("email = %s")
-        params.append(none_if_empty(update.email))
+    contact_email = update.contact_email if update.contact_email is not None else update.email
+    if contact_email is not None:
+        update_fields.append("contact_email = %s")
+        params.append(none_if_empty(contact_email))
 
     if not update_fields:
         raise HTTPException(status_code=400, detail="没有要更新的字段")
@@ -1603,6 +1696,7 @@ def admin_send_notification(body: AdminNotificationRequest, request: Request):
 def create_claim_request(item_id: int, claim: ClaimRequestCreate, request: Request):
     current_user = get_current_user(request)
     verify_csrf_origin(request)
+    requester_school_email = require_verified_school_email(current_user)
     requester_name = claim.requester_name.strip()
     requester_contact = claim.requester_contact.strip()
     if not requester_name or not requester_contact:
@@ -1612,7 +1706,7 @@ def create_claim_request(item_id: int, claim: ClaimRequestCreate, request: Reque
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
         cur.execute(
-            """SELECT id, item_name, direction, status, user_id, contact_person
+            """SELECT id, item_name, direction, status, user_id, contact_person, storage_location
                FROM lost_items
                WHERE id = %s
                FOR UPDATE""",
@@ -1641,8 +1735,10 @@ def create_claim_request(item_id: int, claim: ClaimRequestCreate, request: Reque
         owner_user_id = item["user_id"]
         cur.execute(
             """INSERT INTO claim_requests
-               (item_id, requester_user_id, owner_user_id, request_type, requester_name, requester_contact, message, status)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+               (item_id, requester_user_id, owner_user_id, request_type,
+                requester_name, requester_contact, requester_school_email,
+                message, status)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING *""",
             (
                 item_id,
@@ -1651,6 +1747,7 @@ def create_claim_request(item_id: int, claim: ClaimRequestCreate, request: Reque
                 request_type,
                 requester_name,
                 requester_contact,
+                requester_school_email,
                 none_if_empty(claim.message),
                 request_status,
             ),
@@ -1666,7 +1763,7 @@ def create_claim_request(item_id: int, claim: ClaimRequestCreate, request: Reque
                 cur,
                 owner_user_id,
                 "有人认领了你发布的物品",
-                f"{requester_name} 认领了「{item['item_name']}」，联系方式：{requester_contact}",
+                f"{requester_name} 认领了「{item['item_name']}」，学校邮箱：{requester_school_email}，联系方式：{requester_contact}",
                 "claim",
                 item_id,
             )
@@ -1683,7 +1780,7 @@ def create_claim_request(item_id: int, claim: ClaimRequestCreate, request: Reque
                 cur,
                 owner_user_id,
                 "有人可能捡到了你的物品",
-                f"{requester_name} 表示可能捡到了「{item['item_name']}」，联系方式：{requester_contact}",
+                f"{requester_name} 表示可能捡到了「{item['item_name']}」，学校邮箱：{requester_school_email}，联系方式：{requester_contact}",
                 "contact",
                 item_id,
             )
@@ -1701,6 +1798,7 @@ def create_claim_request(item_id: int, claim: ClaimRequestCreate, request: Reque
         result["item_name"] = item["item_name"]
         result["item_direction"] = item["direction"]
         result["requester_user_name"] = current_user["name"]
+        result["storage_location"] = item["storage_location"]
         return result
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
@@ -1879,9 +1977,10 @@ def update_user(user_id: int, update: UserUpdate, request: Request):
         if update.qq is not None:
             update_fields.append("qq = %s")
             params.append(none_if_empty(update.qq))
-        if update.email is not None:
-            update_fields.append("email = %s")
-            params.append(none_if_empty(update.email))
+        contact_email = update.contact_email if update.contact_email is not None else update.email
+        if contact_email is not None:
+            update_fields.append("contact_email = %s")
+            params.append(none_if_empty(contact_email))
 
         if not update_fields:
             raise HTTPException(status_code=400, detail="没有要更新的字段")

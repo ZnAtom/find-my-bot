@@ -229,7 +229,7 @@
                   <el-input v-model="formData.contact_email" placeholder="可选" size="large">
                     <template #prefix><el-icon><Message /></el-icon></template>
                     <template #append>
-                      <el-button :disabled="!userStore.user?.email" @click="fillFromProfile('contact_email', 'email')">自动填写</el-button>
+                      <el-button :disabled="!preferredProfileEmail" @click="fillPreferredEmail">自动填写</el-button>
                     </template>
                   </el-input>
                 </el-form-item>
@@ -457,6 +457,7 @@ const locationSelectTip = computed(() => (
 const timeLabel = computed(() => isFound.value ? '捡到时间' : '丢失时间')
 const submitButtonText = computed(() => isFound.value ? '发布招领' : '发布寻物')
 const contactMethodCount = computed(() => [formData.contact_phone, formData.contact_qq, formData.contact_email].filter(Boolean).length)
+const preferredProfileEmail = computed(() => userStore.user?.contact_email || userStore.user?.school_email || '')
 const previewLocation = computed(() => (
   isFound.value
     ? (formData.storage_location || formData.location || '待填写现在存放处')
@@ -607,7 +608,7 @@ const syncContactFromUser = ({ onlyName = false } = {}) => {
   if (onlyName) return
   formData.contact_phone = formData.contact_phone || userStore.user?.phone || ''
   formData.contact_qq = formData.contact_qq || userStore.user?.qq || ''
-  formData.contact_email = formData.contact_email || userStore.user?.email || ''
+  formData.contact_email = formData.contact_email || preferredProfileEmail.value
 }
 
 const clearContactFields = ({ keepName = false } = {}) => {
@@ -625,6 +626,17 @@ const fillFromProfile = (targetField, userField) => {
   }
   formData[targetField] = value
   ElMessage.success('已自动填写')
+}
+
+const fillPreferredEmail = () => {
+  if (!preferredProfileEmail.value) {
+    ElMessage.warning('个人信息中没有可自动填写的邮箱')
+    return
+  }
+  formData.contact_email = preferredProfileEmail.value
+  ElMessage.success(
+    userStore.user?.contact_email ? '已填写联系邮箱' : '未设置联系邮箱，已填写学校邮箱'
+  )
 }
 
 const handleLocationModeChange = (mode) => {

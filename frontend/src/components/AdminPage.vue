@@ -97,6 +97,9 @@
                 </template>
               </el-table-column>
               <el-table-column prop="requester_name" label="申请人" width="120" />
+              <el-table-column prop="requester_school_email" label="学校邮箱快照" min-width="220">
+                <template #default="scope">{{ scope.row.requester_school_email || '历史记录未保存' }}</template>
+              </el-table-column>
               <el-table-column prop="requester_contact" label="联系方式" min-width="180" />
               <el-table-column prop="message" label="补充说明" min-width="220">
                 <template #default="scope">{{ scope.row.message || '-' }}</template>
@@ -173,7 +176,15 @@
                   <span class="mono">{{ scope.row.student_id }}</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="email" label="邮箱" min-width="200" />
+              <el-table-column prop="school_email" label="学校邮箱" min-width="220">
+                <template #default="scope">
+                  {{ scope.row.school_email || '未绑定' }}
+                  <el-tag v-if="scope.row.school_email_verified_at" type="success" size="small">已验证</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="contact_email" label="联系邮箱" min-width="200">
+                <template #default="scope">{{ scope.row.contact_email || '-' }}</template>
+              </el-table-column>
               <el-table-column label="角色" width="110">
                 <template #default="scope">
                   <el-tag :type="scope.row.role === 'admin' ? 'danger' : 'info'" size="small">

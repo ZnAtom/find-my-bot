@@ -16,6 +16,7 @@ import psycopg2.extras
 
 from config_env import PROJECT_ROOT, load_project_env, resolve_project_path
 from embedding import encode_text, embedding_enabled
+from item_privacy import mask_sensitive_content
 from retrieval import bm25_recall, filter_vector_recall, hybrid_match_score, rrf_fuse, tokenize
 
 load_project_env()
@@ -507,6 +508,7 @@ def search_public_items(
     limit: int = SUPPORT_ITEM_LIMIT,
     *,
     query_embedding: Optional[list[float]] = None,
+    viewer: Optional[dict] = None,
 ) -> list[dict[str, Any]]:
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     try:
@@ -518,7 +520,7 @@ def search_public_items(
                 vector_str = _vector_str(query_embedding)
 
         cur.execute(
-            """SELECT id, item_name, item_type, direction, status, description,
+            """SELECT id, item_name, item_type, direction, status, description, user_id,
                       location, image_url, created_at, updated_at
                FROM lost_items
                WHERE status = 'active'
@@ -530,7 +532,7 @@ def search_public_items(
         vector_items = []
         if vector_str:
             cur.execute(
-                """SELECT id, item_name, item_type, direction, status, description,
+                """SELECT id, item_name, item_type, direction, status, description, user_id,
                           location, image_url, created_at, updated_at,
                           1 - (vector <=> %s::vector) AS similarity
                    FROM lost_items
@@ -569,21 +571,22 @@ def search_public_items(
         score = hybrid_match_score(query, row)
         if score < RESULT_RELEVANCE_THRESHOLD:
             continue
+        safe_row = mask_sensitive_content(row, viewer)
         results.append(
             {
-                "id": row["id"],
-                "item_name": row["item_name"],
-                "item_type": row.get("item_type"),
-                "direction": row.get("direction"),
-                "status": row.get("status"),
-                "description": _shorten(row.get("description"), 160),
-                "location": _shorten(row.get("location"), 60),
-                "image_url": row.get("image_url"),
-                "created_at": row.get("created_at"),
+                "id": safe_row["id"],
+                "item_name": safe_row["item_name"],
+                "item_type": safe_row.get("item_type"),
+                "direction": safe_row.get("direction"),
+                "status": safe_row.get("status"),
+                "description": _shorten(safe_row.get("description"), 160),
+                "location": _shorten(safe_row.get("location"), 60),
+                "image_url": safe_row.get("image_url"),
+                "created_at": safe_row.get("created_at"),
                 "score": round(score, 4),
                 "vector_similarity": row.get("similarity"),
                 "retrieval_score": round(retrieval_score, 6),
-                "url": f"/#/lost/{row['id']}",
+                "url": f"/#/lost/{safe_row['id']}",
             }
         )
     return results
@@ -955,7 +958,11 @@ async def answer_support_chat(
     ensure_support_schema(conn)
     intent = detect_intent(clean_message, user)
     knowledge_chunks = retrieve_knowledge(conn, clean_message, SUPPORT_KNOWLEDGE_LIMIT)
-    item_results = search_public_items(conn, clean_message, SUPPORT_ITEM_LIMIT) if intent == "item_search" else []
+    item_results = (
+        search_public_items(conn, clean_message, SUPPORT_ITEM_LIMIT, viewer=user)
+        if intent == "item_search"
+        else []
+    )
     personal = load_personal_context(conn, user) if intent == "personal_data" else None
 
     messages = _build_messages(clean_message, intent, knowledge_chunks, item_results, personal, user)

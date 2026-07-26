@@ -21,7 +21,7 @@
           <div class="contact-list">
             <div class="contact-line">
               <el-icon><Message /></el-icon>
-              <span>{{ user?.email || '未填写邮箱' }}</span>
+              <span>{{ user?.contact_email || user?.school_email || '未填写联系邮箱' }}</span>
             </div>
             <div class="contact-line">
               <el-icon><Phone /></el-icon>
@@ -147,8 +147,8 @@
                       <template #prefix><el-icon><ChatDotRound /></el-icon></template>
                     </el-input>
                   </el-form-item>
-                  <el-form-item label="邮箱" prop="email">
-                    <el-input v-model="profileForm.email" placeholder="用于通知" clearable>
+                  <el-form-item label="联系邮箱" prop="contact_email">
+                    <el-input v-model="profileForm.contact_email" placeholder="留空时优先使用学校邮箱" clearable>
                       <template #prefix><el-icon><Message /></el-icon></template>
                     </el-input>
                   </el-form-item>
@@ -162,6 +162,13 @@
                 <div class="account-row">
                   <span>登录来源</span>
                   <strong>Casdoor</strong>
+                </div>
+                <div class="account-row">
+                  <span>学校身份邮箱</span>
+                  <strong>{{ user?.school_email || '未绑定' }}</strong>
+                  <el-tag :type="user?.school_email_verified_at ? 'success' : 'danger'" size="small">
+                    {{ user?.school_email_verified_at ? '已验证' : '未验证' }}
+                  </el-tag>
                 </div>
                 <div class="account-row">
                   <span>当前角色</span>
@@ -270,7 +277,7 @@ const profileForm = reactive({
   name: '',
   phone: '',
   qq: '',
-  email: '',
+  contact_email: '',
 })
 
 const editForm = reactive({
@@ -289,7 +296,7 @@ const profileRules = {
   ],
   phone: [{ pattern: /^$|^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' }],
   qq: [{ pattern: /^$|^[1-9]\d{4,11}$/, message: '请输入正确的 QQ 号', trigger: 'blur' }],
-  email: [{ type: 'email', message: '请输入正确的邮箱', trigger: 'blur' }],
+  contact_email: [{ type: 'email', message: '请输入正确的邮箱', trigger: 'blur' }],
 }
 
 onMounted(async () => {
@@ -311,7 +318,7 @@ const syncProfileForm = () => {
   profileForm.name = user.value?.name || ''
   profileForm.phone = user.value?.phone || ''
   profileForm.qq = user.value?.qq || ''
-  profileForm.email = user.value?.email || ''
+  profileForm.contact_email = user.value?.contact_email || ''
 }
 
 const loadItems = async () => {
@@ -349,7 +356,7 @@ const saveProfile = async () => {
       name: profileForm.name,
       phone: profileForm.phone,
       qq: profileForm.qq,
-      email: profileForm.email,
+      contact_email: profileForm.contact_email,
     })
     await userStore.fetchUser()
     syncProfileForm()

@@ -9,6 +9,7 @@ from support import (
     detect_intent,
     make_anonymous_key,
     plain_chat_text,
+    search_public_items,
 )
 
 
@@ -133,3 +134,49 @@ def test_item_search_sources_only_include_items():
     )
 
     assert [source["type"] for source in sources] == ["item"]
+
+
+def test_public_support_search_masks_sensitive_item_details(monkeypatch):
+    row = {
+        "id": 1,
+        "item_name": "王同学校园卡",
+        "item_type": "证件卡片",
+        "direction": "found",
+        "status": "active",
+        "description": "卡面有完整姓名和学号",
+        "user_id": 9,
+        "location": "上海科技大学 · 教学区 · 信息学院1号楼 · 101室",
+        "image_url": "/uploads/private-card.jpg",
+        "created_at": "2026-07-26T10:00:00",
+        "updated_at": "2026-07-26T10:00:00",
+    }
+
+    class Cursor:
+        def execute(self, sql, _params=None):
+            self.checking_vector = "information_schema.columns" in sql
+
+        def fetchone(self):
+            return (False,)
+
+        def fetchall(self):
+            return [row]
+
+        def close(self):
+            pass
+
+    class Connection:
+        def cursor(self, **_kwargs):
+            return Cursor()
+
+        def rollback(self):
+            pass
+
+    monkeypatch.setattr("support.rrf_fuse", lambda *_args, **_kwargs: [(row, 1.0)])
+    monkeypatch.setattr("support.hybrid_match_score", lambda *_args, **_kwargs: 1.0)
+
+    results = search_public_items(Connection(), "校园卡")
+
+    assert results[0]["item_name"] == "证件卡片"
+    assert results[0]["description"] == ""
+    assert results[0]["image_url"] is None
+    assert results[0]["location"] == "教学区 · 信息学院1号楼"

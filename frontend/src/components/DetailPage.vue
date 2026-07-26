@@ -46,7 +46,8 @@
                 </template>
               </el-image>
               <div v-else class="image-placeholder">
-                <el-icon size="54"><PictureFilled /></el-icon>
+                <el-icon size="54"><Lock v-if="item.sensitive_content_hidden" /><PictureFilled v-else /></el-icon>
+                <span v-if="item.sensitive_content_hidden">敏感物品图片仅向已认证校内用户展示</span>
               </div>
             </div>
 
@@ -94,7 +95,7 @@
 
             <section class="surface-section info-card">
               <h2><el-icon><Document /></el-icon> 物品信息</h2>
-              <p class="description">{{ item.description || '发布者未填写详细描述。' }}</p>
+              <p class="description">{{ item.sensitive_content_hidden ? '敏感物品的详细描述仅向已认证校内用户展示。' : (item.description || '发布者未填写详细描述。') }}</p>
               <div class="info-grid">
                 <div class="info-row">
                   <el-icon><MapLocation /></el-icon>
@@ -117,7 +118,7 @@
                     <strong>{{ item.item_type || '未分类' }}</strong>
                   </span>
                 </div>
-                <div v-if="canViewContact && item.storage_location" class="info-row">
+                <div v-if="canViewStorage && item.storage_location" class="info-row">
                   <el-icon><MapLocation /></el-icon>
                   <span>
                     <small>当前存放处</small>
@@ -194,6 +195,13 @@
     <el-dialog v-model="claimDialogVisible" :title="claimDialogTitle" width="520px">
       <div class="claim-content">
         <p>{{ claimDialogNote }}</p>
+        <el-alert
+          :title="`继续后将记录你的学校邮箱：${schoolEmail}`"
+          type="warning"
+          show-icon
+          :closable="false"
+          class="claim-identity-alert"
+        />
         <el-form class="claim-form">
           <el-form-item>
             <el-input v-model="claimForm.name" placeholder="您的称呼" size="large">
@@ -201,12 +209,12 @@
             </el-input>
           </el-form-item>
           <el-form-item>
-            <el-input v-model="claimForm.contact" placeholder="手机号或微信号" size="large">
+            <el-input v-model="claimForm.contact" placeholder="联系邮箱、手机号或 QQ" size="large">
               <template #prefix><el-icon><Phone /></el-icon></template>
             </el-input>
           </el-form-item>
           <el-form-item>
-            <el-input v-model="claimForm.message" type="textarea" :rows="3" placeholder="补充说明，例如物品特征、拾获时间地点或核验信息" />
+            <el-input v-model="claimForm.message" type="textarea" :rows="3" placeholder="补充说明（选填）" />
           </el-form-item>
         </el-form>
       </div>
@@ -231,6 +239,7 @@ import {
   Clock,
   CollectionTag,
   Document,
+  Lock,
   MapLocation,
   Phone,
   Picture,
@@ -280,17 +289,21 @@ const isAnonymousFoundItem = computed(() => {
 
 const canViewContact = computed(() => {
   if (!item.value) return false
+  if (typeof item.value.contact_access_granted === 'boolean') return item.value.contact_access_granted
   if (canManageItem.value || hasClaimAccess.value) return true
   if (item.value.contact_visibility === 'public') return true
   if (item.value.contact_visibility === 'logged_in' && userStore.isAuthenticated) return true
   return false
 })
 
-const claimActionText = computed(() => item.value?.direction === 'found' ? '这是我的物品' : '我捡到了，联系失主')
+const canViewStorage = computed(() => Boolean(item.value?.storage_access_granted))
+const schoolEmail = computed(() => userStore.user?.school_email || '未绑定')
+
+const claimActionText = computed(() => item.value?.direction === 'found' ? '认领并查看存放处' : '我捡到了，联系失主')
 const claimDialogTitle = computed(() => item.value?.direction === 'found' ? '认领确认' : '联系失主')
 const claimDialogNote = computed(() => (
   item.value?.direction === 'found'
-    ? '请如实填写您的联系方式和核验信息。提交后系统会记录认领并通知发布者。'
+    ? '提交认领后会记录学校身份邮箱，并向你展示物品当前存放处。'
     : '请填写您的联系方式和拾获信息。提交后系统会通知失主，由失主与您线下核验。'
 ))
 const contactLockedText = computed(() => {
@@ -406,9 +419,13 @@ const handleClaim = () => {
     userStore.loginWithCasdoor(`/#${route.fullPath}`)
     return
   }
+  if (!userStore.user?.school_email || !userStore.user?.school_email_verified_at) {
+    ElMessage.error('需要经过验证的学校邮箱才能认领物品')
+    return
+  }
   claimForm.value = {
     name: userStore.user?.name || '',
-    contact: userStore.user?.phone || userStore.user?.qq || userStore.user?.email || '',
+    contact: userStore.user?.phone || userStore.user?.qq || userStore.user?.contact_email || userStore.user?.school_email || '',
     message: '',
   }
   claimDialogVisible.value = true
@@ -421,16 +438,20 @@ const confirmClaim = async () => {
   }
   actionLoading.value = true
   try {
-    await claimsApi.create(item.value.id, {
+    const res = await claimsApi.create(item.value.id, {
       requester_name: claimForm.value.name,
       requester_contact: claimForm.value.contact,
       message: claimForm.value.message,
     })
+    if (res.data?.storage_location) {
+      item.value.storage_location = res.data.storage_location
+      item.value.storage_access_granted = true
+    }
     claimDialogVisible.value = false
     ElMessage.success(item.value.direction === 'found' ? '认领已提交，物品已标记为已找回' : '联系申请已提交')
     await loadItem()
   } catch (e) {
-    ElMessage.error('操作失败')
+    ElMessage.error(e.response?.data?.detail || '操作失败')
   } finally {
     actionLoading.value = false
   }
@@ -496,6 +517,20 @@ const getStatusText = (row) => {
 .main-image-content {
   width: 100%;
   height: 100%;
+}
+
+.main-image .image-placeholder {
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+}
+
+.main-image .image-placeholder span {
+  max-width: 280px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .thumb-row {
@@ -705,6 +740,10 @@ const getStatusText = (row) => {
 .claim-content p {
   margin: 0 0 16px;
   color: var(--text-secondary);
+}
+
+.claim-identity-alert {
+  margin-bottom: 16px;
 }
 
 .dialog-actions {
