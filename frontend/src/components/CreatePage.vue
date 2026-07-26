@@ -215,6 +215,31 @@
                     </template>
                   </el-input>
                 </el-form-item>
+
+                <el-form-item v-if="contactFieldsVisible" label="谁可以查看联系方式">
+                  <el-radio-group v-model="formData.contact_visibility" class="visibility-options">
+                    <el-radio
+                      v-for="option in contactVisibilityOptions"
+                      :key="option.value"
+                      :value="option.value"
+                      border
+                    >
+                      <span class="visibility-option-copy">
+                        <strong>{{ option.label }}</strong>
+                        <small>{{ option.description }}</small>
+                      </span>
+                    </el-radio>
+                  </el-radio-group>
+                </el-form-item>
+
+                <el-alert
+                  v-if="contactFieldsVisible && formData.contact_visibility === 'public'"
+                  title="未登录用户也能看到你填写的联系人、手机、QQ 和邮箱，请只填写愿意公开的信息。"
+                  type="warning"
+                  show-icon
+                  :closable="false"
+                  class="visibility-warning"
+                />
               </div>
             </el-form>
 
@@ -356,6 +381,13 @@ const steps = [
 
 const itemTypes = ['证件卡片', '电子产品', '衣物鞋帽', '学习用品', '钱包钥匙', '其他']
 
+const contactVisibilityOptions = [
+  { value: 'private', label: '仅自己和管理员', description: '其他用户无法查看' },
+  { value: 'logged_in', label: '仅登录用户', description: '登录后可以查看' },
+  { value: 'claimed', label: '申请联系后', description: '相关申请人可以查看' },
+  { value: 'public', label: '所有人（含未登录）', description: '无需登录即可查看' },
+]
+
 const formData = reactive({
   item_name: '',
   item_type: '',
@@ -369,6 +401,7 @@ const formData = reactive({
   contact_phone: '',
   contact_qq: '',
   contact_email: '',
+  contact_visibility: 'logged_in',
 })
 
 const isFound = computed(() => formData.direction === 'found')
@@ -387,8 +420,8 @@ const detailStepDescription = computed(() => (
 ))
 const contactStepDescription = computed(() => (
   isFound.value
-    ? '可以匿名发布；如果希望失主直接联系你，需要登录后留下联系方式。'
-    : '寻物信息需要至少一种联系方式，默认登录用户可见。'
+    ? '可以匿名发布；如果希望失主直接联系你，需要登录后留下联系方式并设置可见范围。'
+    : '寻物信息需要至少一种联系方式，你可以决定谁能查看。'
 ))
 const locationLabel = computed(() => isFound.value ? '捡到地点（选填）' : '丢失地点')
 const locationSelectTip = computed(() => (
@@ -408,7 +441,8 @@ const previewTime = computed(() => formatPreviewTime(formData.lost_time))
 const previewContactLabel = computed(() => {
   if (!isContactRequired()) return isFound.value && !leaveContact.value ? '匿名招领' : '联系方式可选'
   if (contactMethodCount.value === 0) return '待填写联系方式'
-  return `${contactMethodCount.value} 种联系方式`
+  const visibility = contactVisibilityOptions.find(option => option.value === formData.contact_visibility)
+  return `${contactMethodCount.value} 种联系方式 · ${visibility?.label || '可见范围未设置'}`
 })
 const readinessItems = computed(() => [
   { label: '图片或物品特征', done: Boolean(uploadedUrls.value.length || formData.description) },
@@ -502,7 +536,10 @@ onMounted(() => {
 watch(() => formData.direction, () => {
   if (formData.direction === 'found') {
     leaveContact.value = false
+    formData.contact_visibility = 'private'
     clearContactFields({ keepName: Boolean(userStore.user) })
+  } else {
+    formData.contact_visibility = 'logged_in'
   }
   enforceLoginForCurrentFlow()
   formRef.value?.clearValidate()
@@ -531,8 +568,10 @@ const handleLeaveContactChange = (value) => {
     return
   }
   if (value) {
+    formData.contact_visibility = 'claimed'
     syncContactFromUser()
   } else {
+    formData.contact_visibility = 'private'
     clearContactFields({ keepName: Boolean(userStore.user) })
   }
   formRef.value?.clearValidate(['contact_person', 'contact_phone', 'contact_email'])
@@ -849,9 +888,9 @@ const getPayload = () => {
   }
   payload.status = 'active'
   if (payload.direction === 'lost') {
-    payload.contact_visibility = 'logged_in'
+    payload.contact_visibility = formData.contact_visibility || 'logged_in'
   } else if (payload.direction === 'found' && leaveContact.value) {
-    payload.contact_visibility = 'claimed'
+    payload.contact_visibility = formData.contact_visibility || 'claimed'
   } else if (payload.direction === 'found') {
     payload.contact_visibility = 'private'
     payload.contact_person = '匿名'
@@ -1192,6 +1231,56 @@ const confirmSubmit = async () => {
   margin: 14px 0;
 }
 
+.visibility-options {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.visibility-options :deep(.el-radio) {
+  width: 100%;
+  height: auto;
+  min-height: 66px;
+  margin: 0;
+  padding: 12px 14px;
+  align-items: flex-start;
+  white-space: normal;
+}
+
+.visibility-options :deep(.el-radio__input) {
+  margin-top: 3px;
+}
+
+.visibility-options :deep(.el-radio__label) {
+  min-width: 0;
+  padding-left: 9px;
+  white-space: normal;
+}
+
+.visibility-option-copy strong,
+.visibility-option-copy small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.visibility-option-copy strong {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.visibility-option-copy small {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.visibility-warning {
+  margin-top: 4px;
+}
+
 :deep(.el-input-group__append .el-button) {
   min-width: 72px;
 }
@@ -1310,6 +1399,7 @@ const confirmSubmit = async () => {
   .steps-panel,
   .form-grid,
   .post-type-grid,
+  .visibility-options,
   .compact-location-row {
     grid-template-columns: 1fr;
   }

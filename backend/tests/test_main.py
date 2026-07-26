@@ -149,6 +149,15 @@ def test_logged_in_contact_fields_are_visible_to_authenticated_user():
     assert item["storage_location"] == "图书馆前台"
 
 
+def test_public_contact_fields_are_visible_to_anonymous_user():
+    item = serialize_item_for_user(sensitive_item("public"), None)
+
+    assert item["contact_person"] == "王同学"
+    assert item["contact_phone"] == "13800000000"
+    assert item["contact_qq"] == "123456"
+    assert item["contact_email"] == "test@example.com"
+
+
 def test_claimed_contact_fields_are_visible_to_related_claim_user():
     item = serialize_item_for_user(sensitive_item("claimed"), {"id": 3, "role": "user"}, {10})
 
