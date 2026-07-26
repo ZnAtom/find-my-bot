@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   campusBoundary,
+  campusLocationCategoryTree,
   campusLocationEntries,
   campusLocationTree,
+  findCampusLocationByCategoryPath,
   findNearestCampusLocation,
   getCampusBounds,
   projectCampusBoundary,
@@ -20,6 +22,20 @@ describe('campus location data', () => {
     expect(academic.children.some(section => section.label === '信息科学与技术学院')).toBe(true)
     const infoSection = academic.children.find(section => section.label === '信息科学与技术学院')
     expect(infoSection.children.some(item => item.label === '信息学院1号楼')).toBe(true)
+  })
+
+  it('exposes every documented place through the categorized picker', () => {
+    const pickerLeaves = campusLocationCategoryTree.flatMap(group =>
+      group.children.flatMap(section => section.children)
+    )
+
+    expect(campusLocationCategoryTree).toHaveLength(5)
+    expect(pickerLeaves).toHaveLength(71)
+    expect(findCampusLocationByCategoryPath([
+      'residential',
+      'residential:学生公寓',
+      'student-apartment-8',
+    ])?.label).toBe('学生公寓8号楼')
   })
 
   it('searches by building and alias', () => {

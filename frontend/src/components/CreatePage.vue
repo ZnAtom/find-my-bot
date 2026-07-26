@@ -119,16 +119,34 @@
                 </div>
 
                 <el-form-item :label="locationLabel" prop="location" class="location-form-item">
+                  <el-segmented
+                    v-model="locationInputMode"
+                    :options="locationInputModeOptions"
+                    class="location-mode-switch"
+                    @change="handleLocationModeChange"
+                  />
                   <div class="compact-location-row">
-                    <el-autocomplete
-                      v-model="formData.location"
+                    <el-cascader
+                      v-if="locationInputMode === 'category'"
+                      v-model="selectedLocationPath"
                       class="location-cascader"
-                      :fetch-suggestions="fetchLocationSuggestions"
-                      :placeholder="isFound ? '搜索校园地点或直接输入捡到地点' : '搜索校园地点或直接输入丢失地点'"
+                      :options="campusLocationCategoryTree"
+                      placeholder="按区域、分区和建筑选择，或输入名称搜索"
                       size="large"
                       clearable
-                      :trigger-on-focus="true"
-                      @select="handleLocationSelect"
+                      filterable
+                      :show-all-levels="true"
+                      separator=" / "
+                      @change="handleLocationPathChange"
+                    />
+                    <el-input
+                      v-else
+                      v-model="manualLocation"
+                      class="location-cascader"
+                      :placeholder="isFound ? '填写捡到地点，例如：二教 201 门口' : '填写丢失地点，例如：图书馆三楼'"
+                      size="large"
+                      clearable
+                      @input="handleManualLocationInput"
                     />
                     <el-tooltip
                       content="功能测试中，结果可能不准确，请以手动选择为准"
@@ -351,10 +369,10 @@ import { Plus, User, Phone, ChatDotRound, Warning, CircleCheck, Message, MapLoca
 import { apiBase, lostItemsApi, uploadApi } from '../api'
 import { useUserStore } from '../stores/user'
 import {
-  campusLocationEntries,
+  campusLocationCategoryTree,
+  findCampusLocationByCategoryPath,
   findNearestCampusLocation,
   formatDistanceMeters,
-  searchCampusLocations,
 } from '../data/campusLocations'
 
 const userStore = useUserStore()
@@ -372,6 +390,9 @@ const matchDialogVisible = ref(false)
 const matchResults = ref([])
 const leaveContact = ref(false)
 const locating = ref(false)
+const locationInputMode = ref('category')
+const selectedLocationPath = ref([])
+const manualLocation = ref('')
 
 const steps = [
   { title: '图片识别', desc: '图片、名称、分类' },
@@ -380,6 +401,10 @@ const steps = [
 ]
 
 const itemTypes = ['证件卡片', '电子产品', '衣物鞋帽', '学习用品', '钱包钥匙', '其他']
+const locationInputModeOptions = [
+  { label: '分级选择', value: 'category' },
+  { label: '手动填写', value: 'manual' },
+]
 
 const contactVisibilityOptions = [
   { value: 'private', label: '仅自己和管理员', description: '其他用户无法查看' },
@@ -425,9 +450,9 @@ const contactStepDescription = computed(() => (
 ))
 const locationLabel = computed(() => isFound.value ? '捡到地点（选填）' : '丢失地点')
 const locationSelectTip = computed(() => (
-  isFound.value
-    ? ''
-    : '可搜索校园地点，也可以使用当前位置自动匹配最近地点。'
+  locationInputMode.value === 'category'
+    ? '教学科研、生活服务、住宿、运动和交通区域均可逐级选择。'
+    : '可填写楼层、房间、路口或校外地点。'
 ))
 const timeLabel = computed(() => isFound.value ? '捡到时间' : '丢失时间')
 const submitButtonText = computed(() => isFound.value ? '发布招领' : '发布寻物')
@@ -602,22 +627,32 @@ const fillFromProfile = (targetField, userField) => {
   ElMessage.success('已自动填写')
 }
 
-const fetchLocationSuggestions = (queryString, callback) => {
-  if (!queryString || queryString.trim().length < 1) {
-    callback(campusLocationEntries.slice(0, 12).map(e => ({ value: e.pathLabel })))
-    return
+const handleLocationModeChange = (mode) => {
+  if (mode === 'manual') {
+    if (!manualLocation.value) manualLocation.value = formData.location
+    formData.location = manualLocation.value
+  } else {
+    const entry = findCampusLocationByCategoryPath(selectedLocationPath.value)
+    formData.location = entry?.pathLabel || ''
   }
-  const results = searchCampusLocations(queryString, 'all', 12)
-  callback(results.map(e => ({ value: e.pathLabel })))
+  formRef.value?.clearValidate(['location'])
 }
 
-const handleLocationSelect = (item) => {
-  formData.location = item.value
+const handleLocationPathChange = (pathCodes) => {
+  const entry = findCampusLocationByCategoryPath(pathCodes)
+  formData.location = entry?.pathLabel || ''
+  formRef.value?.clearValidate(['location'])
+}
+
+const handleManualLocationInput = (value) => {
+  formData.location = String(value || '').trimStart()
   formRef.value?.clearValidate(['location'])
 }
 
 const applyLocationEntry = (entry) => {
   if (!entry) return
+  locationInputMode.value = 'category'
+  selectedLocationPath.value = entry.pathCodes.slice(1)
   formData.location = entry.pathLabel || entry.label || ''
   formRef.value?.clearValidate(['location'])
 }
@@ -1056,6 +1091,11 @@ const confirmSubmit = async () => {
   width: 100%;
 }
 
+.location-mode-switch {
+  width: min(100%, 260px);
+  margin-bottom: 12px;
+}
+
 .compact-location-row {
   width: 100%;
   display: grid;
@@ -1405,6 +1445,10 @@ const confirmSubmit = async () => {
   }
 
   .compact-location-row .el-button {
+    width: 100%;
+  }
+
+  .location-mode-switch {
     width: 100%;
   }
 

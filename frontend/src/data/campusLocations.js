@@ -328,6 +328,7 @@ export const campusLocationEntries = campusLocationGroups.flatMap((group) =>
 )
 
 export const campusLocationTree = buildCampusLocationTree(campusLocationEntries)
+export const campusLocationCategoryTree = campusLocationTree[0]?.children || []
 
 function buildCampusLocationTree(entries) {
   return [
@@ -378,6 +379,11 @@ function getCampusPolygonCenter(polygon = []) {
 export function findCampusLocationByPathCodes(pathCodes = []) {
   const key = pathCodes.join('>')
   return campusLocationEntries.find((entry) => entry.pathCodes.join('>') === key) || null
+}
+
+export function findCampusLocationByCategoryPath(pathCodes = []) {
+  if (!Array.isArray(pathCodes) || pathCodes.length === 0) return null
+  return findCampusLocationByPathCodes([CAMPUS_CODE, ...pathCodes])
 }
 
 export function findCampusLocationByLabel(label = '') {
