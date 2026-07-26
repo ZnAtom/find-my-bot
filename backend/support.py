@@ -775,6 +775,7 @@ def _build_messages(
         "严禁输出手机号、QQ、邮箱、学号、证件号、二维码内容、条形码内容或完整姓名等敏感信息。"
         "涉及联系他人时，只能引导用户登录后进入物品详情页按平台流程申请联系或认领。"
         "回答要简短但完整，必要时用 2 到 4 个要点。"
+        "输出必须是普通聊天文本，不要使用 Markdown、星号加粗、反引号、标题符号或项目符号。"
     )
     user_prompt = (
         f"用户登录状态：{login_state}\n"
@@ -832,6 +833,36 @@ def _extract_llm_response_text(data: Any) -> Optional[str]:
     return None
 
 
+def plain_chat_text(text: str) -> str:
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"```(?:\w+)?\n?([\s\S]*?)```", r"\1", text)
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1：\2", text)
+    text = re.sub(r"(\*\*|__)(.*?)\1", r"\2", text)
+    text = re.sub(r"(?<!\*)\*(?!\*)([^*\n]+)(?<!\*)\*(?!\*)", r"\1", text)
+    text = re.sub(r"(?<!_)_(?!_)([^_\n]+)(?<!_)_(?!_)", r"\1", text)
+
+    lines: list[str] = []
+    previous_blank = False
+    for raw_line in text.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            if lines and not previous_blank:
+                lines.append("")
+                previous_blank = True
+            continue
+
+        line = re.sub(r"^#{1,6}\s*", "", line)
+        line = re.sub(r"^>\s*", "", line)
+        line = re.sub(r"^(?:[-*+]|\d+[.)]|[一二三四五六七八九十]+[、.])\s*", "", line)
+        line = line.strip()
+        if line:
+            lines.append(line)
+            previous_blank = False
+
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines).strip())
+
+
 async def call_support_llm(messages: list[dict[str, str]]) -> str:
     if not SCHOOL_API_KEY:
         raise RuntimeError("缺少 SCHOOL_API_KEY 环境变量，无法调用学校 GenAI API")
@@ -860,7 +891,7 @@ async def call_support_llm(messages: list[dict[str, str]]) -> str:
     text = _extract_llm_response_text(data)
     if not text:
         raise RuntimeError("学校 GenAI API 响应格式异常")
-    return text
+    return plain_chat_text(text)
 
 
 def _get_or_create_session(

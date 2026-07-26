@@ -8,6 +8,7 @@ from support import (
     build_sources,
     detect_intent,
     make_anonymous_key,
+    plain_chat_text,
 )
 
 
@@ -31,6 +32,25 @@ def test_extract_llm_response_text_supports_openai_choices():
     data = {"choices": [{"message": {"content": "回答内容"}}]}
 
     assert _extract_llm_response_text(data) == "回答内容"
+
+
+def test_plain_chat_text_removes_markdown_syntax():
+    text = (
+        "### 发布招领\n\n"
+        "- **未登录也可以发布匿名招领**，但不能填写 `联系方式`。\n"
+        "1. 查看 [详情页](http://foundit.geekpie.club/#/lost/1)"
+    )
+
+    result = plain_chat_text(text)
+
+    assert "###" not in result
+    assert "**" not in result
+    assert "`" not in result
+    assert "- " not in result
+    assert "[详情页]" not in result
+    assert "未登录也可以发布匿名招领" in result
+    assert "联系方式" in result
+    assert "详情页：http://foundit.geekpie.club/#/lost/1" in result
 
 
 def test_item_sources_do_not_include_contact_fields():
